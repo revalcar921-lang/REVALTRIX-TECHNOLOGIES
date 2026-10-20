@@ -301,7 +301,7 @@ export class PurchaseService {
     return this.database.client.$transaction(async (tx) => {
       const purchase = await this.lockPurchase(tx, context.tenantId, context.branchId, purchaseId);
       await this.lockSupplier(tx, context.tenantId, purchase.supplierId);
-      if (![PurchaseStatus.SENT, PurchaseStatus.PARTIALLY_RECEIVED].includes(purchase.status)) {
+      if (![PurchaseStatus.SENT, PurchaseStatus.PARTIALLY_RECEIVED].includes(purchase.status as any)) {
         throw new ConflictException('Only sent or partially received purchases can be received.');
       }
       const purchaseItems = await tx.purchaseItem.findMany({
@@ -497,7 +497,7 @@ export class PurchaseService {
       await this.lockSupplier(tx, context.tenantId, purchase.supplierId);
       if (
         [PurchaseStatus.DRAFT, PurchaseStatus.CANCELLED, PurchaseStatus.RETURNED].includes(
-          purchase.status,
+          purchase.status as any,
         )
       ) {
         throw new ConflictException('Payment can be recorded only for an active sent purchase.');
@@ -530,7 +530,7 @@ export class PurchaseService {
           method: dto.method,
           amount: new Prisma.Decimal(dto.amount),
           reference: dto.reference?.trim() || null,
-          paidAt: dto.paidAt ? new Date(dto.paidAt) : undefined,
+          ...(dto.paidAt ? { paidAt: dto.paidAt } : {}),
         },
       });
       const updated = await tx.purchase.update({
@@ -562,7 +562,7 @@ export class PurchaseService {
     });
     return this.database.client.$transaction(async (tx) => {
       const purchase = await this.lockPurchase(tx, context.tenantId, context.branchId, purchaseId);
-      if (![PurchaseStatus.DRAFT, PurchaseStatus.SENT].includes(purchase.status)) {
+      if (![PurchaseStatus.DRAFT, PurchaseStatus.SENT].includes(purchase.status as any)) {
         throw new ConflictException('Only unreceived draft or sent purchases can be cancelled.');
       }
       const [received, payments] = await Promise.all([
@@ -617,7 +617,7 @@ export class PurchaseService {
     return this.database.client.$transaction(async (tx) => {
       const purchase = await this.lockPurchase(tx, context.tenantId, context.branchId, purchaseId);
       await this.lockSupplier(tx, context.tenantId, purchase.supplierId);
-      if (![PurchaseStatus.RECEIVED, PurchaseStatus.PARTIALLY_RETURNED].includes(purchase.status)) {
+      if (![PurchaseStatus.RECEIVED, PurchaseStatus.PARTIALLY_RETURNED].includes(purchase.status as any)) {
         throw new ConflictException('Only fully received purchases can be returned.');
       }
       const returnRecord = await tx.purchaseReturn.create({
@@ -912,7 +912,7 @@ export class PurchaseService {
     });
     const rows = purchases.map((purchase) => [
       purchase.purchaseNumber,
-      purchase.status,
+      purchase.status as any,
       purchase.supplier.name,
       purchase.branchId ?? '',
       purchase.currency,
@@ -966,7 +966,7 @@ export class PurchaseService {
         Math.max(
           14,
           ...sheet
-            .getColumn(column.number)
+            .getColumn(column.number ?? 1)
             .values.slice(1)
             .map((value) => String(value ?? '').length + 2),
         ),

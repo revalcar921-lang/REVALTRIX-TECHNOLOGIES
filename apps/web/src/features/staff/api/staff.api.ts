@@ -13,13 +13,14 @@ import type {
   UpdateStaffInput,
 } from '../types/staff.types.js';
 
-async function downloadPrivateStaffFile(path: string): Promise<Blob> {
+async function downloadPrivateStaffFile(path: string): Promise<Blob | null> {
   const session = getAuthSession();
   if (!session) throw new Error('Authentication required.');
   const apiBase = import.meta.env.VITE_API_URL?.replace(/\/+$/, '') ?? '/api';
   const response = await fetch(`${apiBase}${path}`, {
     headers: { Authorization: `Bearer ${session.accessToken}` },
   });
+  if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Private staff file request failed (${response.status})`);
   return response.blob();
 }

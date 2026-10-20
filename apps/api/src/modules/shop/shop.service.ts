@@ -1789,7 +1789,7 @@ export class ShopService {
       });
       if (
         order.deliveryMethod === 'DELIVERY' &&
-        [ShopOrderStatus.OUT_FOR_DELIVERY, ShopOrderStatus.DELIVERED].includes(dto.status)
+        [ShopOrderStatus.OUT_FOR_DELIVERY, ShopOrderStatus.DELIVERED].includes(dto.status as any)
       ) {
         const delivery = await tx.delivery.findFirst({
           where: { tenantId: context.tenantId, orderId: order.id },

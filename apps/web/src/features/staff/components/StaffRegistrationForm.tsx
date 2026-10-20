@@ -263,15 +263,6 @@ export function StaffRegistrationForm({ departments, branches, onCreated }: Staf
             {photo && <button type="button" className="dashboard-secondary-button" onClick={() => setPhoto(null)}>Remove photo</button>}
           </div>
           <div className="tenant-form-grid">
-        <label>
-          Admin Verification / Temp Code (Optional)
-          <input
-            type="text"
-            value={form.verificationCode}
-            onChange={(e) => setForm({ ...form, verificationCode: e.target.value })}
-            placeholder="Leave blank to auto-generate"
-          />
-        </label>
             <label className="staff-field-wide">Full name<input required autoComplete="name" maxLength={300} value={fullName} onChange={(event) => setFullName(event.target.value)} /></label>
             <label>Professional title<select required value={title} onChange={(event) => setTitle(event.target.value)}><option value="">Select title</option>{TITLES.map((option) => <option key={option.label} value={option.label}>{option.label}</option>)}</select></label>
             {title === 'Other' && <label>Professional title<input required maxLength={150} value={customTitle} onChange={(event) => setCustomTitle(event.target.value)} placeholder="Enter title" /></label>}

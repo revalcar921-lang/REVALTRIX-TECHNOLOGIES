@@ -65,7 +65,7 @@ import { ShopProductService } from './shop-product.service.js';
 import { PurchaseService } from './purchase.service.js';
 import { ShopSupplierService } from './shop-supplier.service.js';
 
-@Controller('shop')
+@Controller('v1/shop')
 @UseGuards(AccessTokenGuard)
 export class ShopController {
   constructor(

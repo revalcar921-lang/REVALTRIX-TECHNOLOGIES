@@ -11,7 +11,7 @@ import { validate } from 'class-validator';
 import { Readable } from 'node:stream';
 import { DatabaseService } from '../../database/database.service.js';
 import { AuthorizationService } from '../authorization/authorization.service.js';
-import type {
+import {
   CreateSupplierProfileDto,
   SupplierListQueryDto,
   SupplierPaymentDto,

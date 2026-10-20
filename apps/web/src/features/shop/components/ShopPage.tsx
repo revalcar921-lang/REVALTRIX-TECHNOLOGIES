@@ -1013,9 +1013,13 @@ export function ShopPage() {
                 '/v1/shop/settings',
                 'PATCH',
                 {
-                  ...settings,
+                  storeName: settings.storeName,
+                  acceptingOrders: settings.acceptingOrders,
+                  deliveryEnabled: settings.deliveryEnabled,
+                  pickupEnabled: settings.pickupEnabled,
                   deliveryFee: Number(settings.deliveryFee),
                   minimumOrderValue: Number(settings.minimumOrderValue),
+                  currency: settings.currency,
                 },
                 settings.acceptingOrders ? 'Orders paused.' : 'Store is now accepting orders.',
               )
@@ -1597,9 +1601,13 @@ export function ShopPage() {
                 '/v1/shop/settings',
                 'PATCH',
                 {
-                  ...settings,
+                  storeName: settings.storeName,
+                  acceptingOrders: settings.acceptingOrders,
+                  deliveryEnabled: settings.deliveryEnabled,
+                  pickupEnabled: settings.pickupEnabled,
                   deliveryFee: Number(settings.deliveryFee),
                   minimumOrderValue: Number(settings.minimumOrderValue),
+                  currency: settings.currency,
                 },
                 'Store settings saved.',
               );
