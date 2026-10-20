@@ -76,6 +76,7 @@ export function StaffPage({ onNavigate }: StaffPageProps) {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
   const [shiftDialogOpen, setShiftDialogOpen] = useState(false);
+  const [showShiftFor, setShowShiftFor] = useState<string | null>(null);
   const [editingStaffMember, setEditingStaffMember] = useState<StaffMember | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
