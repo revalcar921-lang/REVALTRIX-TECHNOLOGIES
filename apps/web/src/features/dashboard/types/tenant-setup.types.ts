@@ -11,6 +11,12 @@ export type TenantSetupStatus =
 export interface TenantSetupRequirement {
   key: string;
   label: string;
+  reason: string;
+  status: 'INCOMPLETE' | 'PENDING_REVIEW' | 'COMPLETE' | 'BLOCKED';
+  progress: number;
+  missing: string[];
+  ctaLabel: string;
+  ctaRoute?: string;
   weight: number;
   required: boolean;
   available: boolean;
@@ -39,4 +45,13 @@ export interface TenantSetupResponse {
     requiredCompleted: number;
     ready: boolean;
   };
+  overallProgress: number;
+  sections: Array<{
+    key: string;
+    title: string;
+    progress: number;
+    required: number;
+    percent: number;
+    items: TenantSetupRequirement[];
+  }>;
 }

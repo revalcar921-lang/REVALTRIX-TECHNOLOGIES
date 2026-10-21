@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import type { DashboardMembership } from '../types.js';
 import { getTenantSetup, requestTenantActivation } from '../api/tenant-setup.api.js';
 import type { TenantSetupRequirement, TenantSetupResponse } from '../types/tenant-setup.types.js';
+import { getMyWebsiteStatus, type TenantWebsiteStatus } from '../../tenant-websites/api/tenant-websites.api.js';
+import { requirementRoutes } from '../requirement-routes.js';
 
 interface TenantDashboardPageProps {
   membership: DashboardMembership;
@@ -31,31 +33,6 @@ const dashboardNames: Record<string, string> = {
   OTHER_HEALTHCARE_PROVIDER: 'Healthcare Provider',
 };
 
-const requirementRoutes: Record<string, string> = {
-  organization_identity: '/tenant/organization',
-  legal_information: '/tenant/compliance',
-  location: '/tenant/organization',
-  official_contacts: '/tenant/organization',
-  administrator: '/tenant/access',
-  branches: '/tenant/branches',
-  departments: '/tenant/departments',
-  services: '/tenant/services',
-  providers: '/tenant/providers',
-  documents_uploaded: '/tenant/compliance',
-  documents_approved: '/tenant/compliance',
-  administrator_contacts_verified: '/tenant/access',
-  owner_identity_verified: '/tenant/compliance',
-  branch_configuration: '/tenant/branches',
-  provider_calendar: '/tenant/providers',
-  service_provider_link: '/tenant/services',
-  service_pricing: '/tenant/services',
-  booking_rules: '/tenant/appointments',
-  resources: '/tenant/resources',
-  payments: '/tenant/payments',
-  terms_accepted: '/tenant/compliance',
-  test_booking: '/tenant/appointments',
-};
-
 function RequirementRow({
   requirement,
   onNavigate,
@@ -63,7 +40,7 @@ function RequirementRow({
   requirement: TenantSetupRequirement;
   onNavigate?: (path: string) => void;
 }) {
-  const route = requirementRoutes[requirement.key];
+  const route = requirement.ctaRoute ?? requirementRoutes[requirement.key];
 
   return (
     <div className="tenant-readiness-row">
@@ -78,17 +55,18 @@ function RequirementRow({
         </div>
 
         <span className="tenant-readiness-weight">
-          {requirement.complete
-            ? 'Configuration complete'
-            : requirement.required
-              ? 'Required configuration'
-              : 'Optional configuration'}
+          {requirement.status.replaceAll('_', ' ')} · {requirement.progress}%
         </span>
+        {!requirement.complete ? (
+          <span className="tenant-readiness-reason">
+            Missing: {requirement.missing.join(', ') || requirement.reason}
+          </span>
+        ) : null}
       </div>
 
       {!requirement.complete && route && onNavigate && (
         <button type="button" className="tenant-readiness-action" onClick={() => onNavigate(route)}>
-          Configure
+          {requirement.ctaLabel}
         </button>
       )}
     </div>
@@ -122,6 +100,8 @@ export function TenantDashboardPage({
   const [error, setError] = useState<string | null>(null);
   const [activationSubmitting, setActivationSubmitting] = useState(false);
   const [activationMessage, setActivationMessage] = useState<string | null>(null);
+  const [websiteStatus, setWebsiteStatus] = useState<TenantWebsiteStatus | null>(null);
+  const [websiteStatusLoaded, setWebsiteStatusLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,6 +129,14 @@ export function TenantDashboardPage({
     }
 
     void loadSetup();
+    void getMyWebsiteStatus().then((status) => {
+      if (!cancelled) {
+        setWebsiteStatus(status);
+        setWebsiteStatusLoaded(true);
+      }
+    }).catch(() => {
+      if (!cancelled) setWebsiteStatusLoaded(true);
+    });
 
     return () => {
       cancelled = true;
@@ -345,6 +333,14 @@ export function TenantDashboardPage({
                 <dd>{getStatusLabel(setup.setup.status)}</dd>
               </div>
             </dl>
+          </div>
+
+          <div className="dashboard-card">
+            <p className="dashboard-card-label">PUBLIC WEBSITE</p>
+            <h2>{!websiteStatusLoaded ? 'Loading' : !websiteStatus ? 'Unavailable' : websiteStatus.status === 'PUBLISHED' ? 'Published' : websiteStatus.status === 'UNPUBLISHED' ? 'Unpublished' : 'Draft'}</h2>
+            <p>{websiteStatus ? `/sites/${websiteStatus.slug}` : websiteStatusLoaded ? 'Website status could not be loaded for this account.' : 'Loading website status.'}</p>
+            {websiteStatus?.publicUrl ? <a href={websiteStatus.publicUrl} target="_blank" rel="noreferrer">Open website</a> : null}
+            <button type="button" onClick={() => onNavigate?.('/tenant/website')}>Manage website</button>
           </div>
 
           <div className="dashboard-card">

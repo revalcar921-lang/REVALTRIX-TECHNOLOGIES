@@ -101,6 +101,36 @@ export class ShopController {
     return this.shopProductService.listProducts(request.auth.userId, query);
   }
 
+  @Get('patient/products')
+  async listPatientProducts(
+    @Req() request: AuthenticatedRequest,
+    @Query('q') search = '',
+    @Query('page') page = '1',
+  ) {
+    return this.shopService.listPatientProducts(request.auth.userId, search, Number(page));
+  }
+
+  @Get('patient/products/:productId/image')
+  async downloadPatientProductImage(
+    @Param('productId', new ParseUUIDPipe()) productId: string,
+    @Res() response: Response,
+  ) {
+    const image = await this.shopProductService.downloadPatientProductImage(productId);
+    response.setHeader('Content-Type', image.contentType);
+    response.setHeader('Content-Length', image.buffer.length);
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('Cache-Control', 'private, max-age=300');
+    response.send(image.buffer);
+  }
+
+  @Post('patient/orders')
+  async createPatientOrder(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: CreateShopOrderDto,
+  ) {
+    return this.shopService.createPatientOrder(request.auth.userId, dto);
+  }
+
   @Get('products/export')
   async exportProducts(
     @Req() request: AuthenticatedRequest,

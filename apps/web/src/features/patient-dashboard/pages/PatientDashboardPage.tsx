@@ -52,6 +52,7 @@ import {
   getFamilyRequests,
 } from '../../patient-family/api/patient-family.api.js';
 import { PatientAppointmentsSection } from '../components/PatientAppointmentsSection.js';
+import { PatientShopPage } from '../../shop/components/PatientShopPage.js';
 import './PatientDashboardPage.css';
 
 interface PatientDashboardPageProps {
@@ -242,6 +243,7 @@ const patientNavigationItems = [
   { label: 'Care history', path: '/patient/encounters', icon: 'CH' },
   { label: 'Laboratory', path: '/patient/laboratory', icon: 'LB' },
   { label: 'Prescriptions', path: '/patient/prescriptions', icon: 'RX' },
+  { label: 'Medical shop', path: '/patient/shop', icon: 'SH' },
   { label: 'Documents', path: '/patient/documents', icon: 'DC' },
   { label: 'Data access', path: '/patient/access', icon: 'DA' },
 ] as const;
@@ -1072,6 +1074,8 @@ export function PatientDashboardPage({
                       ? 'Laboratory'
                       : currentPath === '/patient/prescriptions'
                         ? 'Prescriptions'
+                        : currentPath === '/patient/shop'
+                          ? 'Medical shop'
                         : currentPath === '/patient/documents'
                           ? 'Documents'
                           : currentPath === '/patient/access'
@@ -2214,6 +2218,8 @@ export function PatientDashboardPage({
             </section>
           ) : currentPath === '/patient/appointments' ? (
             <PatientAppointmentsSection />
+          ) : currentPath === '/patient/shop' ? (
+            <PatientShopPage />
           ) : (
             <section className="patient-dashboard-section patient-patient-content-panel">
               <p className="patient-dashboard-eyebrow">PATIENT ACCOUNT</p>

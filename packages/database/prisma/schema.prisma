@@ -14,6 +14,31 @@ enum RecordStatus {
   ARCHIVED
 }
 
+enum TenantWebsiteStatus {
+  DRAFT
+  PUBLISHED
+  UNPUBLISHED
+}
+
+enum TenantWebsiteEnquiryStatus {
+  NEW
+  READ
+  RESOLVED
+}
+
+enum OrganizationIdentityReviewStatus {
+  NOT_STARTED
+  PENDING_REVIEW
+  VERIFIED
+  REJECTED
+}
+
+enum ReadinessTestStatus {
+  NOT_RUN
+  PASSED
+  FAILED
+}
+
 enum DepartmentCategory {
   CLINICAL
   CRITICAL_CARE
@@ -1276,6 +1301,12 @@ model Tenant {
   heldShopSales             HeldShopSale[]
   stockMovements            StockMovement[]
   staffProfiles             StaffProfile[]
+  website                   TenantWebsite?
+  compliance                OrganizationCompliance?
+  bookingPolicy             BookingPolicy?
+  paymentConfig             OrganizationPaymentConfig?
+  operationalResources      OperationalResource[]
+  readinessTestRuns         ReadinessTestRun[]
 
   @@index([type])
   @@index([status])
@@ -1287,16 +1318,24 @@ model TenantProfile {
   tenantId                String  @unique @db.Uuid
   businessName            String? @db.VarChar(200)
   legalName               String? @db.VarChar(300)
+  businessType            String? @db.VarChar(100)
   registrationNumber      String? @db.VarChar(150)
   taxIdentificationNumber String? @db.VarChar(150)
+  registrationCountry     String? @db.VarChar(100)
+  incorporationDate       DateTime? @db.Date
   country                 String  @db.VarChar(100)
   county                  String? @db.VarChar(100)
   subcounty               String? @db.VarChar(100)
+  city                    String? @db.VarChar(150)
   address                 String? @db.VarChar(500)
+  latitude                Decimal? @db.Decimal(9, 6)
+  longitude               Decimal? @db.Decimal(9, 6)
   postalCode              String? @db.VarChar(30)
   website                 String? @db.VarChar(500)
   contactEmail            String? @db.VarChar(320)
   contactPhone            String? @db.VarChar(50)
+  supportEmail            String? @db.VarChar(320)
+  whatsappNumber          String? @db.VarChar(50)
   description             String? @db.VarChar(1000)
   ownershipType           String? @db.VarChar(100)
   parentOrganizationId    String? @db.Uuid
@@ -1905,6 +1944,157 @@ model TenantSetup {
   @@map("tenant_setups")
 }
 
+model OrganizationCompliance {
+  id                    String                           @id @default(uuid()) @db.Uuid
+  tenantId              String                           @unique @db.Uuid
+  ownerIdType           String?                          @db.VarChar(50)
+  ownerIdDocumentKey    String?                          @db.VarChar(1000)
+  ownerSelfieKey        String?                          @db.VarChar(1000)
+  ownerIdentityStatus   OrganizationIdentityReviewStatus @default(NOT_STARTED)
+  ownerIdentityReviewedAt DateTime?                      @db.Timestamptz(6)
+  ownerIdentityReviewedBy String?                        @db.Uuid
+  ownerIdentityRejectionReason String?                   @db.VarChar(1000)
+  termsVersion          String?                          @db.VarChar(50)
+  termsAcceptedAt       DateTime?                        @db.Timestamptz(6)
+  termsAcceptedByUserId String?                          @db.Uuid
+  termsAcceptanceIp     String?                          @db.VarChar(64)
+  createdAt             DateTime                         @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime                         @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("organization_compliance")
+}
+
+model BookingPolicy {
+  id                      String   @id @default(uuid()) @db.Uuid
+  tenantId                String   @unique @db.Uuid
+  minLeadTimeMinutes      Int      @default(60)
+  cancellationWindowHours Int      @default(24)
+  rescheduleWindowHours   Int      @default(12)
+  noShowFeeEnabled        Boolean  @default(false)
+  maxBookingsPerDay       Int      @default(10)
+  allowOnlineBooking      Boolean  @default(false)
+  createdAt               DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt               DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("booking_policies")
+}
+
+model OrganizationPaymentConfig {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @unique @db.Uuid
+  currency           String   @default("KES") @db.VarChar(3)
+  acceptMpesa        Boolean  @default(false)
+  acceptCard         Boolean  @default(false)
+  acceptBankTransfer Boolean  @default(false)
+  acceptCash         Boolean  @default(false)
+  depositRequired    Boolean  @default(false)
+  depositPercent     Int?
+  mpesaPaybill       String?  @db.VarChar(100)
+  bankAccountName    String?  @db.VarChar(200)
+  bankAccountNumber  String?  @db.VarChar(100)
+  createdAt          DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("organization_payment_configs")
+}
+
+model OperationalResource {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  branchId  String?  @db.Uuid
+  name      String   @db.VarChar(200)
+  type      String   @db.VarChar(80)
+  capacity  Int      @default(1)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, isActive])
+  @@map("operational_resources")
+}
+
+model ReadinessTestRun {
+  id                 String            @id @default(uuid()) @db.Uuid
+  tenantId           String            @db.Uuid
+  bookingStatus      ReadinessTestStatus @default(NOT_RUN)
+  rescheduleStatus   ReadinessTestStatus @default(NOT_RUN)
+  cancellationStatus ReadinessTestStatus @default(NOT_RUN)
+  reminderStatus    ReadinessTestStatus @default(NOT_RUN)
+  evidenceUrl       String?           @db.VarChar(1000)
+  ranByUserId       String            @db.Uuid
+  createdAt         DateTime          @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@map("readiness_test_runs")
+}
+
+model TenantWebsite {
+  id                String             @id @default(uuid()) @db.Uuid
+  tenantId          String             @unique @db.Uuid
+  slug              String             @unique @db.VarChar(180)
+  status            TenantWebsiteStatus @default(DRAFT)
+  draftContent      Json               @default("{}")
+  publishedContent  Json?
+  revision          Int                @default(1)
+  publishedRevision Int?
+  publishedAt       DateTime?          @db.Timestamptz(6)
+  createdAt         DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime           @updatedAt @db.Timestamptz(6)
+
+  tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  enquiries TenantWebsiteEnquiry[]
+  revisions TenantWebsiteRevision[]
+
+  @@unique([tenantId, id])
+  @@index([status, slug])
+  @@map("tenant_websites")
+}
+
+model TenantWebsiteEnquiry {
+  id        String                    @id @default(uuid()) @db.Uuid
+  tenantId  String                    @db.Uuid
+  websiteId String                    @db.Uuid
+  name      String                    @db.VarChar(200)
+  email     String?                   @db.VarChar(320)
+  phone     String?                   @db.VarChar(50)
+  message   String                    @db.VarChar(3000)
+  status    TenantWebsiteEnquiryStatus @default(NEW)
+  createdAt DateTime                  @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime                  @updatedAt @db.Timestamptz(6)
+
+  website TenantWebsite @relation(fields: [tenantId, websiteId], references: [tenantId, id], onDelete: Cascade)
+
+  @@index([tenantId, status, createdAt])
+  @@map("tenant_website_enquiries")
+}
+
+model TenantWebsiteRevision {
+  id        String   @id @default(uuid()) @db.Uuid
+  websiteId String   @db.Uuid
+  revision  Int
+  slug      String   @db.VarChar(180)
+  content   Json
+  actorId   String   @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  website TenantWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@unique([websiteId, revision])
+  @@index([websiteId, createdAt])
+  @@map("tenant_website_revisions")
+}
+
 model TenantDocument {
   id                 String                           @id @default(uuid()) @db.Uuid
   tenantId           String                           @db.Uuid
@@ -2039,6 +2229,7 @@ model Branch {
   staffShifts         StaffShift[]
   products            Product[]
   purchases           Purchase[]
+  resources           OperationalResource[]
 
   @@unique([tenantId, code])
   @@index([tenantId])

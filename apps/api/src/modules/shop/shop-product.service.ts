@@ -480,6 +480,31 @@ export class ShopProductService {
     };
   }
 
+  async downloadPatientProductImage(productId: string) {
+    const product = await this.database.client.product.findFirst({
+      where: {
+        id: productId,
+        status: 'ACTIVE',
+        visibility: 'ONLINE',
+        prescriptionClass: 'OTC',
+        prescriptionRequired: false,
+        tenant: {
+          status: 'ACTIVE',
+          deletedAt: null,
+          shopSettings: { is: { acceptingOrders: true } },
+        },
+      },
+      select: { imageStorageKey: true, imageMimeType: true },
+    });
+    if (!product?.imageStorageKey || !product.imageMimeType) {
+      throw new NotFoundException('Product image not found.');
+    }
+    return {
+      buffer: await this.storage.get(product.imageStorageKey),
+      contentType: product.imageMimeType,
+    };
+  }
+
   async importProducts(userId: string, file: UploadedProductFile) {
     const context = await this.authorization.assertPermission(userId, {
       resource: 'shop',

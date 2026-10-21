@@ -26,6 +26,8 @@ import { NotificationsPage } from '../../notifications/pages/NotificationsPage.j
 import { clearAuthSession } from '../../auth/api/auth-session.js';
 import { ShopPage } from '../../shop/components/ShopPage.js';
 import { TenantFeatureAccessPage } from './TenantFeatureAccessPage.js';
+import { TenantWebsiteEditorPage } from '../../tenant-websites/pages/TenantWebsiteEditorPage.js';
+import { TenantSetupConfigPage } from './TenantSetupConfigPage.js';
 
 interface AuthenticatedDashboardPageProps {
   requestedPath: string;
@@ -237,6 +239,14 @@ export function AuthenticatedDashboardPage({
 
     if (requestedPath === '/tenant/services') {
       return <ServicesPage />;
+    }
+
+    if (requestedPath === '/tenant/website') {
+      return <TenantWebsiteEditorPage onNavigate={onNavigate} />;
+    }
+
+    if (requestedPath === '/tenant/setup') {
+      return <TenantSetupConfigPage />;
     }
 
     if (requestedPath === '/tenant/patients') {

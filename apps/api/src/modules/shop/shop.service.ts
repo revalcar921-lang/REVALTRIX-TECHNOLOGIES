@@ -2,11 +2,13 @@ import { BatchService } from './batch.service.js';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import {
   Prisma,
+  ProductStatus,
   ProductVisibility,
   SalePaymentMethod,
   SalePaymentStatus,
@@ -1121,6 +1123,262 @@ export class ShopService {
           resourceId: order.id,
           outcome: 'SUCCESS',
           metadata: { orderNumber: order.orderNumber, total: total.toString() },
+        },
+      });
+      return order;
+    });
+  }
+
+  async listPatientProducts(userId: string, search = '', page = 1) {
+    const patient = await this.database.client.patientProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!patient) throw new ForbiddenException('A patient account is required.');
+
+    const currentPage = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+    const pageSize = 24;
+    const term = search.trim().slice(0, 120);
+    const where: Prisma.ProductWhereInput = {
+      status: ProductStatus.ACTIVE,
+      visibility: ProductVisibility.ONLINE,
+      prescriptionClass: 'OTC',
+      prescriptionRequired: false,
+      stockQuantity: { gt: 0 },
+      tenant: {
+        status: 'ACTIVE',
+        deletedAt: null,
+        shopSettings: { is: { acceptingOrders: true } },
+      },
+      ...(term && {
+        OR: [
+          { name: { contains: term, mode: 'insensitive' } },
+          { genericName: { contains: term, mode: 'insensitive' } },
+          { brandName: { contains: term, mode: 'insensitive' } },
+          { brand: { contains: term, mode: 'insensitive' } },
+          { description: { contains: term, mode: 'insensitive' } },
+        ],
+      }),
+    };
+    const [total, products] = await Promise.all([
+      this.database.client.product.count({ where }),
+      this.database.client.product.findMany({
+        where,
+        include: {
+          category: { select: { id: true, name: true } },
+          tenant: {
+            select: {
+              id: true,
+              name: true,
+              shopSettings: {
+                select: {
+                  deliveryEnabled: true,
+                  pickupEnabled: true,
+                  deliveryFee: true,
+                  minimumOrderValue: true,
+                  currency: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { name: 'asc' },
+        skip: (currentPage - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    const items = products
+      .map((product) => ({
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        brand: product.brandName ?? product.brand,
+        genericName: product.genericName,
+        strength: product.strength,
+        dosageForm: product.dosageForm,
+        packSize: product.packSize,
+        unit: product.unit,
+        price: product.sellingPrice.toString(),
+        taxRate: product.taxRate.toString(),
+        currency: product.tenant.shopSettings?.currency ?? 'KES',
+        availableStock: Math.max(product.stockQuantity - product.reservedStock, 0),
+        imageUrl: product.imageUrl,
+        category: product.category,
+        store: { id: product.tenant.id, name: product.tenant.name },
+        deliveryEnabled: product.tenant.shopSettings?.deliveryEnabled ?? false,
+        pickupEnabled: product.tenant.shopSettings?.pickupEnabled ?? false,
+        deliveryFee: product.tenant.shopSettings?.deliveryFee.toString() ?? '0',
+        minimumOrderValue: product.tenant.shopSettings?.minimumOrderValue.toString() ?? '0',
+      }))
+      .filter((product) => product.availableStock > 0);
+
+    return { items, total, page: currentPage, pageSize, totalPages: Math.ceil(total / pageSize) };
+  }
+
+  async createPatientOrder(userId: string, dto: CreateShopOrderDto) {
+    const patient = await this.database.client.patientProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!patient) throw new ForbiddenException('A patient account is required.');
+    if (new Set(dto.items.map((item) => item.productId)).size !== dto.items.length) {
+      throw new BadRequestException('Each product may only appear once in an order.');
+    }
+
+    const selectedProducts = await this.database.client.product.findMany({
+      where: {
+        id: { in: dto.items.map((item) => item.productId) },
+        status: ProductStatus.ACTIVE,
+        visibility: ProductVisibility.ONLINE,
+        prescriptionClass: 'OTC',
+        prescriptionRequired: false,
+        tenant: {
+          status: 'ACTIVE',
+          deletedAt: null,
+          shopSettings: { is: { acceptingOrders: true } },
+        },
+      },
+      select: { id: true, tenantId: true },
+    });
+    if (selectedProducts.length !== dto.items.length) {
+      throw new BadRequestException('One or more products are unavailable for online ordering.');
+    }
+    const tenantIds = new Set(selectedProducts.map((product) => product.tenantId));
+    if (tenantIds.size !== 1) {
+      throw new BadRequestException('Checkout items from one pharmacy at a time.');
+    }
+    const tenantId = selectedProducts[0]!.tenantId;
+
+    return this.database.client.$transaction(async (tx) => {
+      const settings = await tx.shopSettings.findUnique({ where: { tenantId } });
+      if (!settings?.acceptingOrders) {
+        throw new BadRequestException('The pharmacy is not currently accepting orders.');
+      }
+      if (dto.deliveryMethod === 'DELIVERY' && !settings.deliveryEnabled) {
+        throw new BadRequestException('Delivery is not enabled for this pharmacy.');
+      }
+      if (dto.deliveryMethod === 'PICKUP' && !settings.pickupEnabled) {
+        throw new BadRequestException('Pickup is not enabled for this pharmacy.');
+      }
+      if (
+        dto.deliveryMethod === 'DELIVERY' &&
+        (!dto.deliveryAddress || Object.keys(dto.deliveryAddress).length === 0)
+      ) {
+        throw new BadRequestException('A delivery address is required.');
+      }
+      if (
+        dto.deliveryAddress &&
+        (Object.keys(dto.deliveryAddress).length > 8 ||
+          Object.entries(dto.deliveryAddress).some(
+            ([key, value]) => key.length > 40 || typeof value !== 'string' || value.length > 200,
+          ))
+      ) {
+        throw new BadRequestException('The delivery address contains invalid values.');
+      }
+
+      const products = await tx.product.findMany({
+        where: {
+          tenantId,
+          id: { in: dto.items.map((item) => item.productId) },
+          status: ProductStatus.ACTIVE,
+          visibility: ProductVisibility.ONLINE,
+          prescriptionClass: 'OTC',
+          prescriptionRequired: false,
+        },
+      });
+      if (products.length !== dto.items.length) {
+        throw new BadRequestException('One or more products are unavailable.');
+      }
+
+      let subtotal = new Prisma.Decimal(0);
+      let taxTotal = new Prisma.Decimal(0);
+      const lines = dto.items.map((item) => {
+        const product = products.find(({ id }) => id === item.productId);
+        if (!product) throw new BadRequestException('One or more products are unavailable.');
+        const lineSubtotal = product.sellingPrice.mul(item.quantity);
+        const lineTax = lineSubtotal.mul(product.taxRate).div(100).toDecimalPlaces(2);
+        subtotal = subtotal.add(lineSubtotal);
+        taxTotal = taxTotal.add(lineTax);
+        return { item, product, lineTotal: lineSubtotal.add(lineTax) };
+      });
+      if (subtotal.lessThan(settings.minimumOrderValue)) {
+        throw new BadRequestException('The order is below the pharmacy minimum order value.');
+      }
+      const deliveryFee = dto.deliveryMethod === 'DELIVERY'
+        ? new Prisma.Decimal(settings.deliveryFee)
+        : new Prisma.Decimal(0);
+      const total = subtotal.add(taxTotal).add(deliveryFee);
+
+      for (const { item, product } of lines) {
+        const reserved = await tx.$executeRaw`
+          UPDATE "products"
+          SET "reservedStock" = "reservedStock" + ${item.quantity}, "updatedAt" = CURRENT_TIMESTAMP
+          WHERE "id" = ${product.id}::uuid AND "tenantId" = ${tenantId}::uuid
+            AND "stockQuantity" - "reservedStock" >= ${item.quantity}
+        `;
+        if (reserved !== 1) throw new ConflictException(`Insufficient stock for ${product.name}.`);
+      }
+
+      const order = await tx.shopOrder.create({
+        data: {
+          tenantId,
+          customerId: patient.id,
+          orderNumber: `SHOP-${Date.now()}-${randomUUID().slice(0, 8).toUpperCase()}`,
+          orderType: ShopOrderType.ONLINE,
+          currency: settings.currency,
+          subtotal,
+          deliveryFee,
+          taxTotal,
+          total,
+          deliveryMethod: dto.deliveryMethod,
+          ...(dto.deliveryAddress && { deliveryAddress: dto.deliveryAddress }),
+          customerName: dto.customerName.trim(),
+          customerPhone: dto.customerPhone.trim(),
+          ...(dto.customerEmail && { customerEmail: dto.customerEmail.trim() }),
+          statusHistory: {
+            create: {
+              tenantId,
+              toStatus: ShopOrderStatus.PENDING,
+              actorUserId: userId,
+              notes: 'Patient online order created',
+            },
+          },
+          ...(dto.deliveryMethod === 'DELIVERY' && {
+            deliveries: {
+              create: {
+                tenantId,
+                fee: deliveryFee,
+                address: dto.deliveryAddress ?? Prisma.JsonNull,
+                customerPhone: dto.customerPhone.trim(),
+              },
+            },
+          }),
+          items: {
+            create: lines.map(({ item, product, lineTotal }) => ({
+              productId: product.id,
+              productName: product.name,
+              sku: product.sku,
+              quantity: item.quantity,
+              unit: product.unit,
+              unitPrice: product.sellingPrice,
+              discount: 0,
+              taxRate: product.taxRate,
+              lineTotal,
+            })),
+          },
+        },
+        include: { items: true, statusHistory: true, deliveries: true },
+      });
+      await tx.auditEvent.create({
+        data: {
+          tenantId,
+          actorUserId: userId,
+          action: 'SHOP_ORDER_CREATED',
+          resourceType: 'SHOP_ORDER',
+          resourceId: order.id,
+          outcome: 'SUCCESS',
+          metadata: { orderNumber: order.orderNumber, total: total.toString(), customerId: patient.id },
         },
       });
       return order;

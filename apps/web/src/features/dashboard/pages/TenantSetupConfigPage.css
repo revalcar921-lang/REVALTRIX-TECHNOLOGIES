@@ -1,0 +1,181 @@
+.tenant-setup-config-page {
+  display: grid;
+  gap: 16px;
+  max-width: 1050px;
+  color: #263c35;
+}
+
+.tenant-setup-config-heading,
+.tenant-setup-config-heading > div,
+.tenant-setup-config-panel > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.tenant-setup-config-heading h1,
+.tenant-setup-config-panel h2 {
+  margin: 0;
+}
+
+.tenant-setup-config-heading > div > p:last-child,
+.tenant-setup-config-panel > div:first-child > p {
+  margin: 0;
+  color: #687870;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tenant-setup-config-heading > a {
+  width: fit-content;
+  color: #276b52;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tenant-setup-config-tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  border-bottom: 1px solid #dbe4de;
+}
+
+.tenant-setup-config-tabs button {
+  min-height: 42px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #66766e;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.tenant-setup-config-tabs button.active {
+  border-bottom-color: #276b52;
+  color: #276b52;
+}
+
+.tenant-setup-config-panel {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid #dce5df;
+  border-radius: 5px;
+  background: #fff;
+}
+
+.tenant-setup-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.tenant-setup-config-field-wide {
+  grid-column: 1 / -1;
+}
+
+.tenant-setup-config-panel label:not(.tenant-setup-config-check) {
+  display: grid;
+  gap: 5px;
+  color: #3b5148;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tenant-setup-config-panel input:not([type='checkbox']),
+.tenant-setup-config-panel select {
+  width: 100%;
+  min-height: 39px;
+  padding: 8px 9px;
+  border: 1px solid #cbd8d2;
+  border-radius: 4px;
+  background: #fff;
+  color: #253a32;
+  font: inherit;
+  font-weight: 400;
+}
+
+.tenant-setup-config-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #40574d;
+  font-size: 12px;
+}
+
+.tenant-setup-config-check input {
+  accent-color: #276b52;
+}
+
+.tenant-setup-config-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px 18px;
+}
+
+.tenant-setup-config-panel > .tenant-primary-action,
+.tenant-setup-config-grid > .tenant-primary-action {
+  justify-self: start;
+}
+
+.tenant-setup-config-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #bad7c6;
+  border-radius: 4px;
+  background: #eef8f1;
+  color: #275d3e;
+  font-size: 12px;
+}
+
+.tenant-setup-config-message.is-error {
+  border-color: #e4bdb4;
+  background: #fff3ef;
+  color: #8d3929;
+}
+
+.tenant-setup-resource-list {
+  display: grid;
+  border-top: 1px solid #e4ebe7;
+}
+
+.tenant-setup-resource-list article {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e4ebe7;
+  font-size: 12px;
+}
+
+.tenant-setup-resource-list span,
+.tenant-setup-config-empty {
+  color: #6a7971;
+}
+
+.tenant-setup-config-loading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 180px;
+  color: #596d63;
+}
+
+@media (max-width: 560px) {
+  .tenant-setup-config-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tenant-setup-config-field-wide {
+    grid-column: auto;
+  }
+
+  .tenant-setup-resource-list article {
+    flex-direction: column;
+  }
+}

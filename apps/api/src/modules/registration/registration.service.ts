@@ -15,6 +15,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { DatabaseService } from '../../database/database.service.js';
 import { RegisterTenantDto } from './dto/register-tenant.dto.js';
 import { RegisterPatientDto } from './dto/register-patient.dto.js';
+import { provisionTenantWebsite } from '../tenant-websites/tenant-website.utils.js';
 
 @Injectable()
 export class RegistrationService {
@@ -92,6 +93,8 @@ export class RegistrationService {
           },
         },
       });
+
+      await provisionTenantWebsite(tx, tenant.id, tenant.name, tenant.code, user.id);
 
       await this.seedDefaultDepartments(tx, tenant.id, dto.tenantType);
 

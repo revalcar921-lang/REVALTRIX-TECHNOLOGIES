@@ -1,11 +1,16 @@
 import {
+  IsDateString,
   IsEmail,
+  IsNumber,
   IsOptional,
   IsString,
   IsUrl,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class UpdateOrganizationDto {
   @IsOptional()
@@ -32,6 +37,20 @@ export class UpdateOrganizationDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(100)
+  registrationCountry?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  businessType?: string;
+
+  @IsOptional()
+  @IsDateString()
+  incorporationDate?: string;
+
+  @IsOptional()
+  @IsString()
   @MinLength(2)
   @MaxLength(100)
   country?: string;
@@ -45,6 +64,25 @@ export class UpdateOrganizationDto {
   @IsString()
   @MaxLength(100)
   subcounty?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  city?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 6 })
+  @Min(-90)
+  @Max(90)
+  latitude?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 6 })
+  @Min(-180)
+  @Max(180)
+  longitude?: number;
 
   @IsOptional()
   @IsString()
@@ -71,6 +109,16 @@ export class UpdateOrganizationDto {
   @MinLength(7)
   @MaxLength(50)
   contactPhone?: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(320)
+  supportEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  whatsappNumber?: string;
 
   @IsOptional()
   @IsString()

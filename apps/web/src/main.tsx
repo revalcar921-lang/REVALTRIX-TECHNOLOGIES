@@ -20,6 +20,7 @@ import { StaffDashboardPage } from './features/staff/pages/StaffDashboardPage.js
 import { DepartmentWorkspacePage } from './features/staff/pages/DepartmentWorkspacePage.js';
 import { StaffPasswordResetPage } from './features/staff/pages/StaffPasswordResetPage.js';
 import { getMyStaffProfile } from './features/staff/api/staff.api.js';
+import { TenantPublicWebsitePage } from './features/tenant-websites/pages/TenantPublicWebsitePage.js';
 import './styles.css';
 
 type Route =
@@ -36,10 +37,20 @@ type Route =
   | { name: 'staff-dashboard' }
   | { name: 'staff-password-reset' }
   | { name: 'staff-department'; departmentId?: string }
+  | { name: 'public-website'; slug: string; preview: boolean }
   | { name: 'login' };
 
 function getRoute(): Route {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
+
+  const websitePath = path.match(/^\/sites\/([a-z0-9]+(?:-[a-z0-9]+)*)$/);
+  if (websitePath) {
+    return {
+      name: 'public-website',
+      slug: websitePath[1]!,
+      preview: new URLSearchParams(window.location.search).get('preview') === '1',
+    };
+  }
 
   if (path === '/register/patient') {
     return { name: 'patient-registration' };
@@ -274,6 +285,13 @@ function App() {
   async function navigateAfterLogin(): Promise<void> {
     setCheckingSession(true);
     setAccountResolutionError(null);
+    const returnTo = window.sessionStorage.getItem('revaltrix_site_booking_return_to');
+    if (returnTo?.startsWith('/sites/')) {
+      window.sessionStorage.removeItem('revaltrix_site_booking_return_to');
+      navigate(returnTo);
+      setCheckingSession(false);
+      return;
+    }
     try {
       const result = await getMyStaffProfile();
       navigate(result.profile ? '/staff/dashboard' : '/dashboard');
@@ -332,6 +350,10 @@ function App() {
         }}
       />
     );
+  }
+
+  if (route.name === 'public-website') {
+    return <TenantPublicWebsitePage slug={route.slug} preview={route.preview} onNavigate={navigate} />;
   }
 
   if (route.name === 'patient-profile') {

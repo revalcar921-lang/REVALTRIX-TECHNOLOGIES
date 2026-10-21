@@ -39,14 +39,22 @@ interface FormState {
   legalName: string;
   registrationNumber: string;
   taxIdentificationNumber: string;
+  registrationCountry: string;
+  businessType: string;
+  incorporationDate: string;
   country: string;
   county: string;
   subcounty: string;
+  city: string;
   address: string;
+  latitude: string;
+  longitude: string;
   postalCode: string;
   website: string;
   contactEmail: string;
   contactPhone: string;
+  supportEmail: string;
+  whatsappNumber: string;
   description: string;
   ownershipType: string;
 }
@@ -63,14 +71,22 @@ function toFormState(
       result.profile?.registrationNumber ?? '',
     taxIdentificationNumber:
       result.profile?.taxIdentificationNumber ?? '',
+    registrationCountry: result.profile?.registrationCountry ?? '',
+    businessType: result.profile?.businessType ?? '',
+    incorporationDate: result.profile?.incorporationDate?.slice(0, 10) ?? '',
     country: result.profile?.country ?? 'Kenya',
     county: result.profile?.county ?? '',
     subcounty: result.profile?.subcounty ?? '',
+    city: result.profile?.city ?? '',
     address: result.profile?.address ?? '',
+    latitude: result.profile?.latitude == null ? '' : String(result.profile.latitude),
+    longitude: result.profile?.longitude == null ? '' : String(result.profile.longitude),
     postalCode: result.profile?.postalCode ?? '',
     website: result.profile?.website ?? '',
     contactEmail: result.profile?.contactEmail ?? '',
     contactPhone: result.profile?.contactPhone ?? '',
+    supportEmail: result.profile?.supportEmail ?? '',
+    whatsappNumber: result.profile?.whatsappNumber ?? '',
     description: result.profile?.description ?? '',
     ownershipType: result.profile?.ownershipType ?? '',
   };
@@ -159,14 +175,22 @@ export function OrganizationPage({
       registrationNumber: form.registrationNumber.trim(),
       taxIdentificationNumber:
         form.taxIdentificationNumber.trim(),
+      registrationCountry: form.registrationCountry.trim(),
+      businessType: form.businessType.trim(),
+      incorporationDate: form.incorporationDate || undefined,
       country: form.country.trim(),
       county: form.county.trim(),
       subcounty: form.subcounty.trim(),
+      city: form.city.trim(),
       address: form.address.trim(),
+      latitude: form.latitude.trim() ? Number(form.latitude) : undefined,
+      longitude: form.longitude.trim() ? Number(form.longitude) : undefined,
       postalCode: form.postalCode.trim(),
       website: form.website.trim(),
       contactEmail: form.contactEmail.trim(),
       contactPhone: form.contactPhone.trim(),
+      supportEmail: form.supportEmail.trim(),
+      whatsappNumber: form.whatsappNumber.trim(),
       description: form.description.trim(),
       ownershipType: form.ownershipType.trim(),
     };
@@ -320,6 +344,21 @@ export function OrganizationPage({
             </label>
 
             <label>
+              <span>Registration country</span>
+              <input value={form.registrationCountry} onChange={(event) => updateField('registrationCountry', event.target.value)} maxLength={100} />
+            </label>
+
+            <label>
+              <span>Business type</span>
+              <input value={form.businessType} onChange={(event) => updateField('businessType', event.target.value)} maxLength={100} placeholder="e.g. Limited company, NGO" />
+            </label>
+
+            <label>
+              <span>Incorporation date</span>
+              <input type="date" value={form.incorporationDate} onChange={(event) => updateField('incorporationDate', event.target.value)} />
+            </label>
+
+            <label>
               <span>Ownership type</span>
               <input
                 value={form.ownershipType}
@@ -379,6 +418,11 @@ export function OrganizationPage({
             </label>
 
             <label>
+              <span>City / town</span>
+              <input value={form.city} onChange={(event) => updateField('city', event.target.value)} maxLength={150} />
+            </label>
+
+            <label>
               <span>Postal code</span>
               <input
                 value={form.postalCode}
@@ -398,6 +442,16 @@ export function OrganizationPage({
                 }
                 maxLength={500}
               />
+            </label>
+
+            <label>
+              <span>Latitude</span>
+              <input type="number" step="0.000001" min="-90" max="90" value={form.latitude} onChange={(event) => updateField('latitude', event.target.value)} />
+            </label>
+
+            <label>
+              <span>Longitude</span>
+              <input type="number" step="0.000001" min="-180" max="180" value={form.longitude} onChange={(event) => updateField('longitude', event.target.value)} />
             </label>
           </div>
         </div>
@@ -435,6 +489,16 @@ export function OrganizationPage({
                 }
                 maxLength={50}
               />
+            </label>
+
+            <label>
+              <span>Support email</span>
+              <input type="email" value={form.supportEmail} onChange={(event) => updateField('supportEmail', event.target.value)} maxLength={320} />
+            </label>
+
+            <label>
+              <span>WhatsApp number</span>
+              <input type="tel" value={form.whatsappNumber} onChange={(event) => updateField('whatsappNumber', event.target.value)} maxLength={50} />
             </label>
 
             <label className="tenant-form-field-wide">

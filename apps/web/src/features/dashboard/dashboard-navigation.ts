@@ -224,6 +224,18 @@ const NAVIGATION: DashboardNavGroup[] = [
         section: 'ORGANIZATION',
       },
       {
+        key: 'website',
+        label: 'Website',
+        path: '/tenant/website',
+        section: 'ORGANIZATION',
+      },
+      {
+        key: 'setup-settings',
+        label: 'Readiness setup',
+        path: '/tenant/setup',
+        section: 'ORGANIZATION',
+      },
+      {
         key: 'capacity',
         label: 'Capacity',
         path: '/tenant/capacity',

@@ -71,14 +71,22 @@ export class OrganizationService {
             legalName: true,
             registrationNumber: true,
             taxIdentificationNumber: true,
+            registrationCountry: true,
+            businessType: true,
+            incorporationDate: true,
             country: true,
             county: true,
             subcounty: true,
+            city: true,
             address: true,
+            latitude: true,
+            longitude: true,
             postalCode: true,
             website: true,
             contactEmail: true,
             contactPhone: true,
+            supportEmail: true,
+            whatsappNumber: true,
             description: true,
             ownershipType: true,
             createdAt: true,
@@ -156,6 +164,15 @@ export class OrganizationService {
               input.taxIdentificationNumber.trim(),
           }
         : {}),
+      ...(input.registrationCountry !== undefined
+        ? { registrationCountry: input.registrationCountry.trim() || null }
+        : {}),
+      ...(input.businessType !== undefined
+        ? { businessType: input.businessType.trim() || null }
+        : {}),
+      ...(input.incorporationDate !== undefined
+        ? { incorporationDate: input.incorporationDate ? new Date(input.incorporationDate) : null }
+        : {}),
       ...(input.country !== undefined
         ? { country: input.country.trim() }
         : {}),
@@ -165,6 +182,11 @@ export class OrganizationService {
       ...(input.subcounty !== undefined
         ? { subcounty: input.subcounty.trim() || null }
         : {}),
+      ...(input.city !== undefined
+        ? { city: input.city.trim() || null }
+        : {}),
+      ...(input.latitude !== undefined ? { latitude: input.latitude } : {}),
+      ...(input.longitude !== undefined ? { longitude: input.longitude } : {}),
       ...(input.address !== undefined
         ? { address: input.address.trim() || null }
         : {}),
@@ -179,6 +201,12 @@ export class OrganizationService {
         : {}),
       ...(input.contactPhone !== undefined
         ? { contactPhone: input.contactPhone.trim() || null }
+        : {}),
+      ...(input.supportEmail !== undefined
+        ? { supportEmail: input.supportEmail.trim().toLowerCase() || null }
+        : {}),
+      ...(input.whatsappNumber !== undefined
+        ? { whatsappNumber: input.whatsappNumber.trim() || null }
         : {}),
       ...(input.description !== undefined
         ? { description: input.description.trim() || null }

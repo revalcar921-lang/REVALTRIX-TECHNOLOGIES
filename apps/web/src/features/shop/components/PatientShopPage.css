@@ -1,0 +1,473 @@
+.patient-shop-page {
+  display: grid;
+  gap: 22px;
+  min-width: 0;
+  color: #172a2c;
+}
+
+.patient-shop-heading,
+.patient-shop-checkout-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.patient-shop-heading h1,
+.patient-shop-checkout-heading h2 {
+  margin: 2px 0 0;
+  color: #14282a;
+}
+
+.patient-shop-heading > div > p:last-child {
+  margin: 7px 0 0;
+  color: #5a6c6d;
+}
+
+.patient-shop-cart-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid #c7ddcf;
+  border-radius: 6px;
+  background: #edf7ef;
+  color: #23583d;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.patient-shop-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(290px, 350px);
+  align-items: start;
+  gap: 24px;
+}
+
+.patient-shop-catalogue {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.patient-shop-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 13px;
+  border: 1px solid #cbd8d4;
+  border-radius: 6px;
+  background: #fff;
+  color: #526868;
+}
+
+.patient-shop-search:focus-within {
+  border-color: #32856c;
+  box-shadow: 0 0 0 3px rgb(50 133 108 / 12%);
+}
+
+.patient-shop-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #172a2c;
+  font: inherit;
+}
+
+.patient-shop-product-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 225px), 1fr));
+  gap: 14px;
+}
+
+.patient-shop-product {
+  overflow: hidden;
+  border: 1px solid #d8e1dd;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.patient-shop-product-image {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  background: #eef5f0;
+}
+
+.patient-shop-product-placeholder {
+  place-items: center;
+  color: #4d806b;
+}
+
+.patient-shop-product-copy {
+  display: grid;
+  gap: 8px;
+  padding: 13px;
+}
+
+.patient-shop-store,
+.patient-shop-product-detail,
+.patient-shop-stock {
+  margin: 0;
+  color: #617371;
+  font-size: 12px;
+}
+
+.patient-shop-store {
+  color: #23704e;
+  font-weight: 700;
+}
+
+.patient-shop-product-copy h2 {
+  margin: 0;
+  color: #192e2e;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.patient-shop-product-detail {
+  min-height: 32px;
+  line-height: 1.4;
+}
+
+.patient-shop-stock {
+  color: #357153;
+}
+
+.patient-shop-product-buy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.patient-shop-product-buy strong {
+  color: #172a2c;
+  font-size: 16px;
+}
+
+.patient-shop-product-buy button,
+.patient-shop-pagination button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid #267252;
+  border-radius: 5px;
+  background: #267252;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.patient-shop-checkout {
+  position: sticky;
+  top: 18px;
+  display: grid;
+  gap: 15px;
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid #d2ded8;
+  border-top: 3px solid #35815f;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.patient-shop-icon-button,
+.patient-shop-quantity button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid #d7e1dc;
+  border-radius: 5px;
+  background: #fff;
+  color: #355c4b;
+  cursor: pointer;
+}
+
+.patient-shop-cart-lines {
+  display: grid;
+  gap: 12px;
+  max-height: 250px;
+  overflow: auto;
+}
+
+.patient-shop-cart-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e5ebe8;
+}
+
+.patient-shop-cart-line > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.patient-shop-cart-line strong {
+  overflow-wrap: anywhere;
+  color: #243837;
+  font-size: 13px;
+}
+
+.patient-shop-cart-line span {
+  color: #667674;
+  font-size: 12px;
+}
+
+.patient-shop-quantity {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+}
+
+.patient-shop-quantity button {
+  width: 27px;
+  height: 27px;
+}
+
+.patient-shop-quantity button:disabled,
+.patient-shop-pagination button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.patient-shop-order-form,
+.patient-shop-order-form > label {
+  display: grid;
+  gap: 8px;
+}
+
+.patient-shop-order-form {
+  gap: 12px;
+}
+
+.patient-shop-order-form > label {
+  gap: 5px;
+  color: #334c48;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.patient-shop-order-form label span {
+  color: #74817e;
+  font-weight: 400;
+}
+
+.patient-shop-order-form input:not([type='radio']),
+.patient-shop-order-form textarea {
+  width: 100%;
+  min-height: 39px;
+  padding: 8px 9px;
+  border: 1px solid #cbd8d2;
+  border-radius: 5px;
+  color: #172a2c;
+  font: inherit;
+  font-weight: 400;
+}
+
+.patient-shop-order-form textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.patient-shop-order-form fieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.patient-shop-order-form legend {
+  margin-bottom: 8px;
+  color: #334c48;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.patient-shop-fulfilment-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.patient-shop-fulfilment-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #344c48;
+  font-size: 13px;
+}
+
+.patient-shop-fulfilment-options input {
+  accent-color: #267252;
+}
+
+.patient-shop-totals {
+  display: grid;
+  gap: 8px;
+  padding-top: 11px;
+  border-top: 1px solid #e3eae6;
+}
+
+.patient-shop-totals > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #596c67;
+  font-size: 13px;
+}
+
+.patient-shop-totals strong {
+  color: #213633;
+}
+
+.patient-shop-totals .patient-shop-grand-total {
+  padding-top: 8px;
+  border-top: 1px solid #e3eae6;
+  color: #1a302c;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.patient-shop-minimum,
+.patient-shop-payment-note {
+  margin: 0;
+  color: #687875;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.patient-shop-minimum {
+  color: #a34d27;
+}
+
+.patient-shop-place-order {
+  min-height: 43px;
+  border: 0;
+  border-radius: 5px;
+  background: #267252;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.patient-shop-place-order:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.patient-shop-cart-empty,
+.patient-shop-empty {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 32px 18px;
+  border: 1px dashed #cbd8d2;
+  border-radius: 6px;
+  color: #687875;
+  text-align: center;
+}
+
+.patient-shop-cart-empty p,
+.patient-shop-empty h2,
+.patient-shop-empty p {
+  margin: 0;
+}
+
+.patient-shop-empty h2 {
+  color: #29413c;
+  font-size: 17px;
+}
+
+.patient-shop-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: #4e625e;
+  font-size: 13px;
+}
+
+.patient-shop-pagination button {
+  background: #fff;
+  color: #267252;
+}
+
+.patient-shop-message,
+.patient-shop-order-success {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid #bad7c6;
+  border-radius: 5px;
+  background: #eef8f1;
+  color: #275d3e;
+  line-height: 1.45;
+}
+
+.patient-shop-message.is-error {
+  border-color: #e7b8ac;
+  background: #fff3ef;
+  color: #8d3929;
+}
+
+.patient-shop-order-success {
+  align-items: center;
+}
+
+.patient-shop-order-success h2,
+.patient-shop-order-success p:last-child {
+  margin: 4px 0 0;
+}
+
+.patient-shop-order-success h2 {
+  color: #1c482f;
+  font-size: 17px;
+}
+
+@media (max-width: 880px) {
+  .patient-shop-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .patient-shop-checkout {
+    position: static;
+  }
+}
+
+@media (max-width: 520px) {
+  .patient-shop-heading {
+    align-items: flex-start;
+  }
+
+  .patient-shop-heading h1 {
+    font-size: 24px;
+  }
+
+  .patient-shop-heading > div > p:last-child {
+    max-width: 230px;
+    line-height: 1.45;
+  }
+
+  .patient-shop-cart-count {
+    padding: 8px;
+    font-size: 12px;
+  }
+}
