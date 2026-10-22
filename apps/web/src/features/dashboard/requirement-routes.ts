@@ -8,4 +8,11 @@ export const requirementRoutes: Readonly<Record<string, string>> = {
   departments: '/tenant/departments',
   services: '/tenant/services',
   service_pricing: '/tenant/services',
+  provider_calendar: '/tenant/providers',
+  service_provider_link: '/tenant/providers',
+  resources: '/tenant/setup?section=resources',
+  booking_rules: '/tenant/setup?section=booking',
+  payments: '/tenant/setup?section=payments',
+  administrator_contacts_verified: '/tenant/staff',
+  owner_identity_verified: '/tenant/setup?section=ownership',
 };

@@ -11,6 +11,7 @@ interface TenantDashboardShellProps {
   children: ReactNode;
   enabledFeatures?: ReadonlySet<TenantFeature>;
   isPlatformAdmin?: boolean;
+  canReviewSuperAdmin?: boolean;
 }
 
 const tenantTypeLabels: Record<string, string> = {
@@ -43,11 +44,13 @@ export function TenantDashboardShell({
   children,
   enabledFeatures,
   isPlatformAdmin,
+  canReviewSuperAdmin,
 }: TenantDashboardShellProps) {
   const navigation = getDashboardNavigation(
     membership.tenant.type,
     enabledFeatures,
     isPlatformAdmin,
+    canReviewSuperAdmin,
   );
   const tenantType = tenantTypeLabels[membership.tenant.type] ?? 'Healthcare Organization';
 

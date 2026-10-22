@@ -1,6 +1,7 @@
 import {
   IsBoolean,
   IsDateString,
+  IsEnum,
   IsIn,
   IsInt,
   IsOptional,
@@ -13,8 +14,9 @@ import {
   Matches,
   IsUUID,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { Type } from 'class-transformer';
-import { TenantDocumentType } from '@prisma/client';
+import { OwnershipEvidenceType, OwnershipPartyRole, OwnershipPartyType, TenantDocumentType } from '@prisma/client';
 
 export class UploadTenantDocumentDto {
   @IsIn(['BUSINESS_PERMIT', 'HEALTHCARE_FACILITY_LICENSE', 'REGISTRATION_CERTIFICATE', 'INCORPORATION_CERTIFICATE'])
@@ -42,6 +44,75 @@ export class UploadTenantDocumentDto {
   @IsOptional()
   @IsDateString()
   expiryDate?: string;
+}
+
+export class SaveOwnershipPartyDto {
+  @IsEnum(OwnershipPartyType)
+  partyType!: OwnershipPartyType;
+
+  @IsEnum(OwnershipPartyRole)
+  role!: OwnershipPartyRole;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(250)
+  fullName!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  registrationNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  registrationCountry?: string;
+
+  @IsOptional()
+  @IsIn(['NATIONAL_ID', 'PASSPORT', 'ALIEN_ID', 'DRIVING_LICENSE'])
+  @MaxLength(50)
+  identityDocumentType?: string;
+}
+
+export class UploadOwnershipEvidenceDto {
+  @IsEnum(OwnershipEvidenceType)
+  evidenceType!: OwnershipEvidenceType;
+}
+
+export class SubmitOwnershipDeclarationDto {
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  accepted!: boolean;
+}
+
+export class ReviewOwnershipPartyDto {
+  @IsIn(['VERIFIED', 'REJECTED'])
+  decision!: 'VERIFIED' | 'REJECTED';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
+}
+
+export class ReviewTenantDocumentDto {
+  @IsIn(['VERIFIED', 'REJECTED'])
+  decision!: 'VERIFIED' | 'REJECTED';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
+}
+
+export class ReviewTenantActivationDto {
+  @IsIn(['APPROVE', 'REJECT'])
+  decision!: 'APPROVE' | 'REJECT';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
 }
 
 export class UpdateBookingPolicyDto {

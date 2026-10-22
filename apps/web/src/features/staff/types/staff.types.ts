@@ -46,6 +46,7 @@ export interface StaffMember {
   branch: { id: string; name: string; code: string } | null;
   reportsTo: { id: string; firstName: string; lastName: string } | null;
   emailVerified: boolean;
+  phoneVerified: boolean;
   passwordConfigured: boolean;
   assignments: StaffDepartmentAssignment[];
   shifts: StaffShift[];
@@ -153,6 +154,9 @@ export interface StaffTimeOff {
   updatedAt: string;
   scheduleConflicts?: string[];
 }
+
+export type StaffTimeOffEntry = StaffTimeOff;
+export type StaffAccessLog = StaffAccessAttempt;
 
 export interface StaffMeResponse {
   profile: {

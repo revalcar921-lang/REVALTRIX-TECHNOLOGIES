@@ -25,7 +25,6 @@ export interface TenantSetupSettings {
   resources: Array<{ id: string; branchId: string | null; name: string; type: string; capacity: number; isActive: boolean; updatedAt: string }>;
   documents: Array<{ id: string; type: string; title: string; documentNumber: string | null; issuingAuthority: string | null; issueDate: string | null; expiryDate: string | null; status: string; verificationStatus: string; rejectionReason: string | null; createdAt: string; updatedAt: string }>;
   compliance: { termsVersion: string | null; termsAcceptedAt: string | null; termsAcceptedByUserId: string | null; ownerIdentityStatus: string } | null;
-  latestTestRun: { id: string; bookingStatus: string; rescheduleStatus: string; cancellationStatus: string; reminderStatus: string; createdAt: string } | null;
   currentTermsVersion: string | null;
   termsUrl: string | null;
   privacyUrl: string | null;

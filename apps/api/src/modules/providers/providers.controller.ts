@@ -15,6 +15,7 @@ import { AccessTokenGuard } from '../core/authentication/guards/access-token.gua
 import { PermissionGuard } from '../authorization/guards/permission.guard.js';
 import { RequirePermission } from '../authorization/decorators/require-permission.decorator.js';
 import { CreateProviderDto } from './dto/create-provider.dto.js';
+import { CreateProviderAvailabilityDto } from './dto/create-provider-availability.dto.js';
 import { ProviderQueryDto } from './dto/provider-query.dto.js';
 import { UpdateProviderDto } from './dto/update-provider.dto.js';
 import { ProvidersService } from './providers.service.js';
@@ -23,6 +24,13 @@ import { ProvidersService } from './providers.service.js';
 @UseGuards(AccessTokenGuard)
 export class ProvidersController {
   constructor(private readonly providersService: ProvidersService) {}
+
+  @Get('eligible-users')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('providers', 'create')
+  async eligibleUsers(@Req() request: AuthenticatedRequest) {
+    return this.providersService.listEligibleUsers(request.auth.userId);
+  }
 
   @Get()
   @UseGuards(PermissionGuard)
@@ -45,6 +53,16 @@ export class ProvidersController {
       request.auth.userId,
       providerId,
     );
+  }
+
+  @Get(':providerId/availability')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('providers', 'read')
+  async listAvailability(
+    @Req() request: AuthenticatedRequest,
+    @Param('providerId') providerId: string,
+  ) {
+    return this.providersService.listAvailability(request.auth.userId, providerId);
   }
 
   @Post()
@@ -73,6 +91,28 @@ export class ProvidersController {
       providerId,
       dto,
     );
+  }
+
+  @Post(':providerId/availability')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('providers', 'update')
+  async createAvailability(
+    @Req() request: AuthenticatedRequest,
+    @Param('providerId') providerId: string,
+    @Body() dto: CreateProviderAvailabilityDto,
+  ) {
+    return this.providersService.createAvailability(request.auth.userId, providerId, dto);
+  }
+
+  @Delete(':providerId/availability/:availabilityId')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('providers', 'update')
+  async deactivateAvailability(
+    @Req() request: AuthenticatedRequest,
+    @Param('providerId') providerId: string,
+    @Param('availabilityId') availabilityId: string,
+  ) {
+    return this.providersService.deactivateAvailability(request.auth.userId, providerId, availabilityId);
   }
 
   @Delete(':providerId')

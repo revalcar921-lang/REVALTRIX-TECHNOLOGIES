@@ -440,11 +440,11 @@ export function PatientAppointmentsSection({ onNavigate }: { onNavigate: (path: 
         <div className="patient-dashboard-section-header">
           <div>
             <h2 id="appointment-booking-title">Find care nearby</h2>
-            <p>Search real facilities, services, and specialists, then choose an available appointment.</p>
+            <p>Search facilities and public services, then choose a department and available appointment.</p>
           </div>
         </div>
         <form className="appointment-discovery-search" onSubmit={submitDiscoverySearch}>
-          <label htmlFor="appointment-discovery-search">Service, specialist, facility, town, or address</label>
+          <label htmlFor="appointment-discovery-search">Service, facility, town, or address</label>
           <div>
             <input
               id="appointment-discovery-search"
@@ -460,7 +460,7 @@ export function PatientAppointmentsSection({ onNavigate }: { onNavigate: (path: 
         </form>
         {facilitiesError ? <div className="patient-dashboard-empty" role="alert"><p>{facilitiesError}</p><button type="button" onClick={() => void loadFacilities(discoverySearch)}>Try again</button></div> : null}
         {facilitiesLoading ? <p role="status">Searching current bookable facilities…</p> : null}
-        {!facilitiesLoading && !facilitiesError && facilities.length === 0 ? <p className="patient-dashboard-empty">No facilities with public appointment booking, selected public branches and services, and provider availability match this search.</p> : null}
+        {!facilitiesLoading && !facilitiesError && facilities.length === 0 ? <p className="patient-dashboard-empty">No bookable facilities match this search. A facility appears here only when it is live, online booking is enabled, and its website has published at least one public branch and service. Saving website changes creates a draft; publish those updates before they appear here.</p> : null}
         {discoverySearch ? <p className="appointment-discovery-query">Results for “{discoverySearch}”</p> : null}
         <AppointmentDiscoveryMap locations={mapLocations} selectedTenantId={tenantId} onSelectTenant={selectFacility} />
         {sortedFacilities.length ? (
@@ -488,7 +488,7 @@ export function PatientAppointmentsSection({ onNavigate }: { onNavigate: (path: 
 
       {selectedFacility ? (
         <section className="appointment-booking-step" aria-labelledby="appointment-selection-title">
-          <div className="appointment-step-heading"><span>2</span><div><h2 id="appointment-selection-title">Choose a branch and service</h2><p>{selectedFacility.profile?.businessName || selectedFacility.name}</p></div></div>
+          <div className="appointment-step-heading"><span>2</span><div><h2 id="appointment-selection-title">Choose a branch, department, and service</h2><p>{selectedFacility.profile?.businessName || selectedFacility.name}</p></div></div>
           <div className="appointment-selection-grid">
             <label>Branch
               <select value={branchId} onChange={(event) => { const nextBranchId = event.target.value; const departments = selectedFacility.departments.filter((department) => !department.branchId || department.branchId === nextBranchId); setBranchId(nextBranchId); setDepartmentId(departments.length === 1 ? departments[0]!.id : ''); setServiceId(''); resetSlotSearch(); }} required>
@@ -560,7 +560,7 @@ export function PatientAppointmentsSection({ onNavigate }: { onNavigate: (path: 
                   <div className="patient-dashboard-facility-meta">
                     <strong>{formatDate(slot.startAt, slot.timeZone)}</strong>
                     <span>
-                      selectedFacility?.departments.find((department) => department.id === slot.departmentId)?.name ?? 'Available department'
+                      {selectedFacility?.departments.find((department) => department.id === slot.departmentId)?.name ?? 'Available department'}
                     </span>
                     {selected && <span className="appointment-slot-selected">Selected</span>}
                   </div>

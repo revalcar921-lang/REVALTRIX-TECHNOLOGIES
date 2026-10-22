@@ -8,21 +8,26 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../../database/database.service.js';
 import { PrivateObjectStorageService } from '../storage/private-object-storage.service.js';
 import {
+  NotificationChannel,
   Prisma,
+  TenantDocumentStatus,
+  TenantDocumentVerificationStatus,
   TenantSetupStatus,
   TenantType,
   type BookingPolicy,
   type OrganizationCompliance,
   type OrganizationPaymentConfig,
-  type ReadinessTestRun,
 } from '@prisma/client';
 import { AuthorizationService } from '../authorization/authorization.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import type {
   AcceptTenantTermsDto,
   CreateOperationalResourceDto,
   UpdateBookingPolicyDto,
   UpdateOrganizationPaymentConfigDto,
   UploadTenantDocumentDto,
+  ReviewTenantDocumentDto,
+  ReviewTenantActivationDto,
 } from './dto/tenant-setup-config.dto.js';
 
 const DEFAULT_PLATFORM_TERMS_VERSION = '2026-10-21';
@@ -56,6 +61,7 @@ export class TenantSetupService {
     private readonly database: DatabaseService,
     private readonly authorization: AuthorizationService,
     private readonly storage: PrivateObjectStorageService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async getTenantSettings(userId: string) {
@@ -65,7 +71,7 @@ export class TenantSetupService {
       orderBy: { createdAt: 'asc' },
     });
     if (!membership) throw new NotFoundException('Active tenant membership not found.');
-    const [bookingPolicy, paymentConfig, resources, compliance, latestTestRun, documents] = await Promise.all([
+    const [bookingPolicy, paymentConfig, resources, compliance, documents] = await Promise.all([
       this.database.client.bookingPolicy.findUnique({ where: { tenantId: membership.tenantId } }),
       this.database.client.organizationPaymentConfig.findUnique({ where: { tenantId: membership.tenantId } }),
       this.database.client.operationalResource.findMany({
@@ -76,10 +82,6 @@ export class TenantSetupService {
       this.database.client.organizationCompliance.findUnique({
         where: { tenantId: membership.tenantId },
         select: { termsVersion: true, termsAcceptedAt: true, termsAcceptedByUserId: true, ownerIdentityStatus: true },
-      }),
-      this.database.client.readinessTestRun.findFirst({
-        where: { tenantId: membership.tenantId },
-        orderBy: { createdAt: 'desc' },
       }),
       this.database.client.tenantDocument.findMany({
         where: { tenantId: membership.tenantId, status: { notIn: ['DRAFT', 'REPLACED'] } },
@@ -106,12 +108,240 @@ export class TenantSetupService {
       paymentConfig,
       resources,
       compliance,
-      latestTestRun,
       documents,
       currentTermsVersion: platformTerms.version,
       termsUrl: platformTerms.termsUrl,
       privacyUrl: platformTerms.privacyUrl,
     };
+  }
+
+  async listPendingTenantDocuments() {
+    return this.database.client.tenantDocument.findMany({
+      where: {
+        verificationStatus: TenantDocumentVerificationStatus.PENDING,
+        status: { in: [TenantDocumentStatus.UPLOADED, TenantDocumentStatus.UNDER_REVIEW] },
+        storageKey: { not: null },
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        type: true,
+        title: true,
+        documentNumber: true,
+        issuingAuthority: true,
+        issueDate: true,
+        expiryDate: true,
+        status: true,
+        verificationStatus: true,
+        fileName: true,
+        mimeType: true,
+        fileSizeBytes: true,
+        uploadedByUserId: true,
+        createdAt: true,
+        tenant: { select: { name: true, code: true, type: true, profile: { select: { businessName: true, registrationNumber: true } } } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async downloadTenantReviewDocument(reviewerUserId: string, documentId: string) {
+    const document = await this.database.client.tenantDocument.findFirst({
+      where: {
+        id: documentId,
+        verificationStatus: TenantDocumentVerificationStatus.PENDING,
+        storageKey: { not: null },
+      },
+      select: { id: true, tenantId: true, storageKey: true, fileName: true, mimeType: true },
+    });
+    if (!document?.storageKey) throw new NotFoundException('Pending compliance document was not found');
+    const buffer = await this.storage.get(document.storageKey);
+    await this.database.client.auditEvent.create({
+      data: {
+        tenantId: document.tenantId,
+        actorUserId: reviewerUserId,
+        action: 'TENANT_COMPLIANCE_DOCUMENT_VIEWED',
+        resourceType: 'TENANT_DOCUMENT',
+        resourceId: document.id,
+        outcome: 'SUCCESS',
+      },
+    });
+    return { buffer, fileName: document.fileName ?? 'compliance-document', contentType: document.mimeType ?? 'application/octet-stream' };
+  }
+
+  async reviewTenantDocument(reviewerUserId: string, documentId: string, dto: ReviewTenantDocumentDto) {
+    if (dto.decision === 'REJECTED' && !dto.reason?.trim()) {
+      throw new ConflictException('A rejection reason is required.');
+    }
+    const document = await this.database.client.tenantDocument.findFirst({
+      where: { id: documentId, verificationStatus: TenantDocumentVerificationStatus.PENDING },
+      select: { id: true, tenantId: true, title: true, type: true, status: true },
+    });
+    if (!document) throw new NotFoundException('Pending compliance document was not found');
+    const now = new Date();
+    const nextStatus = dto.decision === 'VERIFIED' ? TenantDocumentStatus.VERIFIED : TenantDocumentStatus.REJECTED;
+    await this.database.client.$transaction(async (tx) => {
+      await tx.tenantDocument.update({
+        where: { id: document.id },
+        data: {
+          status: nextStatus,
+          verificationStatus: dto.decision,
+          verifiedByUserId: reviewerUserId,
+          verifiedAt: now,
+          rejectionReason: dto.decision === 'REJECTED' ? dto.reason!.trim() : null,
+        },
+      });
+      await tx.auditEvent.create({
+        data: {
+          tenantId: document.tenantId,
+          actorUserId: reviewerUserId,
+          action: `TENANT_COMPLIANCE_DOCUMENT_${dto.decision}`,
+          resourceType: 'TENANT_DOCUMENT',
+          resourceId: document.id,
+          outcome: 'SUCCESS',
+          reason: dto.reason?.trim() ?? null,
+          metadata: { type: document.type },
+        },
+      });
+    });
+    await this.notifyTenantAdmins(
+      document.tenantId,
+      'TENANT_COMPLIANCE_DOCUMENT_REVIEWED',
+      `Facility document ${dto.decision === 'VERIFIED' ? 'approved' : 'rejected'}`,
+      dto.decision === 'VERIFIED'
+        ? `${document.title} was verified by the Revaltrix review team.`
+        : `${document.title} was rejected. Reason: ${dto.reason!.trim()}`,
+      `tenant-document:${document.id}:${dto.decision}`,
+      { documentId: document.id, decision: dto.decision },
+    );
+    return { id: document.id, status: nextStatus, verificationStatus: dto.decision };
+  }
+
+  async listPendingActivations() {
+    return this.database.client.tenantSetup.findMany({
+      where: { status: TenantSetupStatus.READY, activationRequestedAt: { not: null }, activationReviewedAt: null },
+      select: {
+        id: true,
+        tenantId: true,
+        readinessPercent: true,
+        readyAt: true,
+        activationRequestedAt: true,
+        tenant: { select: { name: true, legalName: true, type: true, code: true, profile: { select: { businessName: true, registrationNumber: true, contactEmail: true, contactPhone: true } } } },
+      },
+      orderBy: { activationRequestedAt: 'asc' },
+    });
+  }
+
+  async reviewActivation(reviewerUserId: string, tenantId: string, dto: ReviewTenantActivationDto) {
+    if (dto.decision === 'REJECT' && !dto.reason?.trim()) throw new ConflictException('A rejection reason is required.');
+    const setup = await this.database.client.tenantSetup.findFirst({
+      where: { tenantId, status: TenantSetupStatus.READY, activationRequestedAt: { not: null }, activationReviewedAt: null },
+      select: { id: true },
+    });
+    if (!setup) throw new NotFoundException('Pending activation request was not found');
+    if (dto.decision === 'APPROVE') {
+      const adminMembership = await this.database.client.membership.findFirst({
+        where: {
+          tenantId,
+          status: 'ACTIVE',
+          roles: { some: { role: { code: 'TENANT_ADMIN', status: 'ACTIVE' } } },
+        },
+        select: { userId: true },
+      });
+      if (!adminMembership) throw new ConflictException('No active tenant administrator is available to validate readiness.');
+      const readiness = await this.getSetup(adminMembership.userId);
+      if (!readiness.summary.ready) throw new ConflictException('Tenant readiness changed. The facility must complete its current required items before activation.');
+    }
+    const now = new Date();
+    const approved = dto.decision === 'APPROVE';
+    await this.database.client.$transaction(async (tx) => {
+      await tx.tenantSetup.update({
+        where: { id: setup.id },
+        data: {
+          status: approved ? TenantSetupStatus.LIVE : TenantSetupStatus.READY,
+          liveAt: approved ? now : null,
+          activationRequestedAt: null,
+          activationReviewedAt: now,
+          activationReviewedByUserId: reviewerUserId,
+          activationReviewReason: approved ? null : dto.reason!.trim(),
+          lastCalculatedAt: now,
+        },
+      });
+      await tx.auditEvent.create({
+        data: {
+          tenantId,
+          actorUserId: reviewerUserId,
+          action: `TENANT_ACTIVATION_${dto.decision}`,
+          resourceType: 'TENANT_SETUP',
+          resourceId: setup.id,
+          outcome: 'SUCCESS',
+          reason: dto.reason?.trim() ?? null,
+        },
+      });
+    });
+    await this.notifyTenantAdmins(
+      tenantId,
+      `TENANT_ACTIVATION_${dto.decision}`,
+      approved ? 'Facility activated' : 'Activation request needs changes',
+      approved
+        ? 'Your facility has been approved for activation and is now live.'
+        : `Your activation request was not approved. Reason: ${dto.reason!.trim()}`,
+      `tenant-activation:${tenantId}:${dto.decision}:${now.toISOString()}`,
+      { tenantId, decision: dto.decision },
+    );
+    return { tenantId, status: approved ? TenantSetupStatus.LIVE : TenantSetupStatus.READY, decision: dto.decision };
+  }
+
+  private async notifyTenantAdmins(tenantId: string, type: string, title: string, body: string, eventKey: string, data: Record<string, unknown>) {
+    const admins = await this.database.client.membership.findMany({
+      where: {
+        tenantId,
+        status: 'ACTIVE',
+        roles: { some: { role: { code: 'TENANT_ADMIN', status: 'ACTIVE' } } },
+      },
+      select: { userId: true },
+    });
+    await Promise.all([...new Set(admins.map(({ userId }) => userId))].map((recipientUserId) =>
+      this.notifications.createNotification({
+        tenantId,
+        recipientUserId,
+        type,
+        title,
+        body,
+        data,
+        channels: [NotificationChannel.IN_APP, NotificationChannel.EMAIL],
+        idempotencyPrefix: eventKey,
+      }),
+    ));
+  }
+
+  private async notifyPlatformReviewers(type: string, title: string, body: string, eventKey: string, data: Record<string, unknown>) {
+    const reviewers = await this.database.client.user.findMany({
+      where: {
+        status: 'ACTIVE',
+        deletedAt: null,
+        platformRoleAssignments: {
+          some: {
+            role: {
+              scope: 'PLATFORM',
+              status: 'ACTIVE',
+              code: { in: ['PLATFORM_ADMIN', 'PLATFORM_VERIFIER', 'VERIFICATION_REVIEWER'] },
+            },
+          },
+        },
+      },
+      select: { id: true },
+    });
+    await Promise.all([...new Set(reviewers.map(({ id }) => id))].map((recipientUserId) =>
+      this.notifications.createNotification({
+        recipientUserId,
+        type,
+        title,
+        body,
+        data,
+        channels: [NotificationChannel.IN_APP, NotificationChannel.EMAIL],
+        idempotencyPrefix: eventKey,
+      }),
+    ));
   }
 
   async updateBookingPolicy(userId: string, dto: UpdateBookingPolicyDto) {
@@ -429,7 +659,7 @@ export class TenantSetupService {
         }),
       ]);
 
-    const [bookingPolicy, paymentConfig, resourceCount, compliance, latestTestRun] =
+    const [bookingPolicy, paymentConfig, resourceCount, compliance] =
       await Promise.all([
         this.database.client.bookingPolicy.findUnique({ where: { tenantId: membership.tenantId } }),
         this.database.client.organizationPaymentConfig.findUnique({ where: { tenantId: membership.tenantId } }),
@@ -445,13 +675,9 @@ export class TenantSetupService {
             termsAcceptedByUserId: true,
           },
         }),
-        this.database.client.readinessTestRun.findFirst({
-          where: { tenantId: membership.tenantId },
-          orderBy: { createdAt: 'desc' },
-        }),
       ]);
 
-    const [availabilityCount, serviceProviderLinkCount, verifiedAdministratorCount] =
+    const [availabilityCount, serviceProviderLinkCount, verifiedAdministratorEmailCount, ownershipPartyStatuses] =
       await Promise.all([
         this.database.client.providerAvailability.count({
           where: {
@@ -498,31 +724,25 @@ export class TenantSetupService {
             },
             user: {
               is: {
-                AND: [
-                  {
-                    identities: {
-                      some: {
-                        type: 'EMAIL',
-                        verifiedAt: { not: null },
-                        status: 'ACTIVE',
-                      },
-                    },
+                identities: {
+                  some: {
+                    type: 'EMAIL',
+                    verifiedAt: { not: null },
+                    status: 'ACTIVE',
                   },
-                  {
-                    identities: {
-                      some: {
-                        type: 'PHONE',
-                        verifiedAt: { not: null },
-                        status: 'ACTIVE',
-                      },
-                    },
-                  },
-                ],
+                },
               },
             },
           },
         }),
+        this.database.client.tenantOwnershipParty.findMany({
+          where: { tenantId: membership.tenantId },
+          select: { status: true },
+        }),
       ]);
+    const ownershipIdentityVerified = compliance?.ownerIdentityStatus === 'VERIFIED' &&
+      ownershipPartyStatuses.length > 0 &&
+      ownershipPartyStatuses.every((party) => party.status === 'VERIFIED');
 
     return this.calculateAndPersist(
       membership.tenant,
@@ -537,12 +757,12 @@ export class TenantSetupService {
       documents,
       availabilityCount,
       serviceProviderLinkCount,
-      verifiedAdministratorCount,
+      verifiedAdministratorEmailCount,
       bookingPolicy,
       paymentConfig,
       resourceCount,
       compliance,
-      latestTestRun,
+      ownershipIdentityVerified,
     );
   }
 
@@ -567,6 +787,18 @@ export class TenantSetupService {
       });
     }
 
+    const pendingActivation = await this.database.client.tenantSetup.findUnique({
+      where: { tenantId: readiness.tenant.id },
+      select: { activationRequestedAt: true, activationReviewedAt: true },
+    });
+    if (pendingActivation?.activationRequestedAt && !pendingActivation.activationReviewedAt) {
+      return {
+        accepted: true,
+        status: TenantSetupStatus.READY,
+        message: 'An activation request is already pending platform review.',
+      };
+    }
+
     const membership = await this.database.client.membership.findFirst({
       where: {
         userId,
@@ -588,6 +820,7 @@ export class TenantSetupService {
       throw new ForbiddenException('Only an active tenant administrator can request activation');
     }
 
+    const activationRequestedAt = new Date();
     await this.database.client.$transaction(async (tx) => {
       await tx.auditEvent.create({
         data: {
@@ -611,11 +844,23 @@ export class TenantSetupService {
         where: { tenantId: membership.tenantId },
         data: {
           status: TenantSetupStatus.READY,
-          readyAt: new Date(),
-          lastCalculatedAt: new Date(),
+          readyAt: activationRequestedAt,
+          activationRequestedAt,
+          activationReviewedAt: null,
+          activationReviewedByUserId: null,
+          activationReviewReason: null,
+          lastCalculatedAt: activationRequestedAt,
         },
       });
     });
+
+    await this.notifyPlatformReviewers(
+      'TENANT_ACTIVATION_REQUESTED',
+      'Facility activation request',
+      `${readiness.tenant.name} is ready for activation review.`,
+      `tenant-activation-request:${membership.tenantId}:${activationRequestedAt.toISOString()}`,
+      { tenantId: membership.tenantId },
+    );
 
     return {
       accepted: true,
@@ -692,12 +937,12 @@ export class TenantSetupService {
     }>,
     availabilityCount: number,
     serviceProviderLinkCount: number,
-    verifiedAdministratorCount: number,
+    verifiedAdministratorEmailCount: number,
     bookingPolicy: BookingPolicy | null,
     paymentConfig: OrganizationPaymentConfig | null,
     resourceCount: number,
     compliance: Pick<OrganizationCompliance, 'ownerIdentityStatus' | 'termsVersion' | 'termsAcceptedAt' | 'termsAcceptedByUserId'> | null,
-    latestTestRun: ReadinessTestRun | null,
+    ownershipIdentityVerified: boolean,
   ) {
     const currentTermsVersion = getPlatformTermsConfiguration().version;
     const requirements = this.buildRequirements(
@@ -713,12 +958,12 @@ export class TenantSetupService {
       documents,
       availabilityCount,
       serviceProviderLinkCount,
-      verifiedAdministratorCount,
+      verifiedAdministratorEmailCount,
       bookingPolicy,
       paymentConfig,
       resourceCount,
       compliance,
-      latestTestRun,
+      ownershipIdentityVerified,
       currentTermsVersion,
     );
 
@@ -856,12 +1101,12 @@ export class TenantSetupService {
     }>,
     availabilityCount: number,
     serviceProviderLinkCount: number,
-    verifiedAdministratorCount: number,
+    verifiedAdministratorEmailCount: number,
     bookingPolicy: BookingPolicy | null,
     paymentConfig: OrganizationPaymentConfig | null,
     resourceCount: number,
     compliance: Pick<OrganizationCompliance, 'ownerIdentityStatus' | 'termsVersion' | 'termsAcceptedAt' | 'termsAcceptedByUserId'> | null,
-    latestTestRun: ReadinessTestRun | null,
+    ownershipIdentityVerified: boolean,
     currentTermsVersion: string,
   ): ReadinessRequirement[] {
     const profile = tenant.profile;
@@ -974,19 +1219,19 @@ export class TenantSetupService {
       },
       {
         key: 'administrator_contacts_verified',
-        label: 'Tenant administrator email and phone verified',
+        label: 'Tenant administrator email verified',
         weight: 6,
         required: true,
         available: true,
-        complete: verifiedAdministratorCount > 0,
+        complete: verifiedAdministratorEmailCount > 0,
       },
       {
         key: 'owner_identity_verified',
-        label: 'Facility owner identity verified',
+        label: 'Facility ownership and controllers verified',
         weight: 6,
         required: true,
         available: true,
-        complete: compliance?.ownerIdentityStatus === 'VERIFIED',
+        complete: ownershipIdentityVerified,
       },
       {
         key: 'branches',
@@ -1086,14 +1331,6 @@ export class TenantSetupService {
           compliance.termsVersion === currentTermsVersion,
         ),
       },
-      {
-        key: 'test_booking',
-        label: 'Test booking, reschedule, cancellation, and reminder passed',
-        weight: 5,
-        required: true,
-        available: true,
-        complete: Boolean(latestTestRun && latestTestRun.bookingStatus === 'PASSED' && latestTestRun.rescheduleStatus === 'PASSED' && latestTestRun.cancellationStatus === 'PASSED' && latestTestRun.reminderStatus === 'PASSED'),
-      },
     ];
 
     const incompleteReasons: Record<string, string> = {
@@ -1104,8 +1341,8 @@ export class TenantSetupService {
       administrator: 'Assign an active tenant administrator role to at least one active organization member.',
       documents_uploaded: 'Upload the required facility permit and healthcare facility license.',
       documents_approved: 'Both required documents must be approved by the verification workflow.',
-      administrator_contacts_verified: 'The active tenant administrator must complete both email and phone verification.',
-      owner_identity_verified: compliance?.ownerIdentityStatus === 'PENDING_REVIEW' ? 'Identity evidence has been submitted and is pending authorized review.' : 'Submit owner identity evidence; only an authorized reviewer can mark it verified.',
+      administrator_contacts_verified: 'Verify the active tenant administrator email through the tenant registration OTP. Phone verification is tracked separately.',
+      owner_identity_verified: compliance?.ownerIdentityStatus === 'PENDING_REVIEW' ? 'Ownership parties and their evidence are pending authorized platform review.' : 'Declare the owner, company directors/beneficial owners, or government authorized officials and submit their evidence for platform review.',
       branches: 'Create at least one active branch.',
       branch_configuration: 'Each active branch needs an address, a contact, opening/closing times, and operating days.',
       departments: 'Create at least one active department for this organization type.',
@@ -1117,7 +1354,6 @@ export class TenantSetupService {
       booking_rules: 'Configure the booking lead time, cancellation/reschedule windows, and daily limit.',
       payments: 'Select at least one accepted payment preference and provide its required details.',
       terms_accepted: 'Review and accept the current Revaltrix Terms and Privacy Policy.',
-      test_booking: 'Run real booking, reschedule, cancellation, and reminder tests; no automated test runner is configured.',
     };
 
     const profileMissing = (fields: Array<[string, unknown]>) =>
@@ -1151,7 +1387,7 @@ export class TenantSetupService {
         ['publicEmail', profile?.contactEmail],
         ['whatsappNumber', profile?.whatsappNumber],
         ['supportEmail', profile?.supportEmail],
-      ]).concat(verifiedAdministratorCount > 0 ? [] : ['verifiedAdministratorEmail', 'verifiedAdministratorPhone']),
+      ]),
       administrator: administratorCount > 0 ? [] : ['activeOwnerOrAdmin'],
       documents_uploaded: requiredDocumentTypes.flatMap((type) => {
         const document = documents.find((item) => item.type === type && item.storageKey);
@@ -1162,8 +1398,8 @@ export class TenantSetupService {
         return document?.status === 'VERIFIED' && document.verificationStatus === 'VERIFIED' &&
           (!document.expiryDate || document.expiryDate > new Date()) ? [] : [type];
       }),
-      administrator_contacts_verified: verifiedAdministratorCount > 0 ? [] : ['emailVerifiedAt', 'phoneVerifiedAt'],
-      owner_identity_verified: compliance?.ownerIdentityStatus === 'VERIFIED' ? [] : ['ownerIdType', 'ownerIdDocument', 'ownerSelfie', 'verificationStatus'],
+      administrator_contacts_verified: verifiedAdministratorEmailCount > 0 ? [] : ['emailVerifiedAt'],
+      owner_identity_verified: ownershipIdentityVerified ? [] : ['ownershipParties', 'requiredEvidence', 'reviewStatus'],
       branches: branchCount > 0 ? [] : ['activeBranch'],
       branch_configuration: activeBranches.flatMap((branch) => profileMissing([
         ['branch.address', branch.address],
@@ -1186,7 +1422,6 @@ export class TenantSetupService {
       booking_rules: bookingPolicy ? [] : ['minLeadTimeMinutes', 'cancellationWindowHours', 'rescheduleWindowHours', 'maxBookingsPerDay'],
       payments: paymentConfig && (paymentConfig.acceptCash || (paymentConfig.acceptMpesa && paymentConfig.mpesaPaybill) || paymentConfig.acceptCard || (paymentConfig.acceptBankTransfer && paymentConfig.bankAccountName && paymentConfig.bankAccountNumber)) ? [] : ['enabledPaymentMethod'],
       terms_accepted: compliance?.termsAcceptedAt && compliance.termsAcceptedByUserId && compliance.termsVersion === currentTermsVersion ? [] : ['termsVersion', 'acceptedBy', 'acceptedAt'],
-      test_booking: latestTestRun?.bookingStatus === 'PASSED' && latestTestRun.rescheduleStatus === 'PASSED' && latestTestRun.cancellationStatus === 'PASSED' && latestTestRun.reminderStatus === 'PASSED' ? [] : ['bookingTest', 'rescheduleTest', 'cancellationTest', 'reminderTest'],
     };
     const routes: Record<string, string> = {
       organization_identity: '/tenant/website',
@@ -1198,6 +1433,10 @@ export class TenantSetupService {
       departments: '/tenant/departments',
       services: '/tenant/services',
       service_pricing: '/tenant/services',
+      provider_calendar: '/tenant/providers',
+      service_provider_link: '/tenant/providers',
+      administrator_contacts_verified: '/register/tenant/dashboard',
+      owner_identity_verified: '/tenant/setup?section=ownership',
       booking_rules: '/tenant/setup?section=booking',
       payments: '/tenant/setup?section=payments',
       resources: '/tenant/setup?section=resources',
@@ -1213,8 +1452,8 @@ export class TenantSetupService {
       administrator: 1,
       documents_uploaded: 2,
       documents_approved: 2,
-      administrator_contacts_verified: 2,
-      owner_identity_verified: 4,
+      administrator_contacts_verified: 1,
+      owner_identity_verified: 3,
       branches: 1,
       branch_configuration: Math.max(1, activeBranches.length * 6),
       departments: 1,
@@ -1226,7 +1465,6 @@ export class TenantSetupService {
       booking_rules: 1,
       payments: 1,
       terms_accepted: 3,
-      test_booking: 4,
     };
 
     return requirements.map((requirement) => {
@@ -1236,8 +1474,7 @@ export class TenantSetupService {
       const submittedDocument = requirement.key === 'documents_approved' &&
         requiredDocumentTypes.some((type) => documents.some((document) => document.type === type && document.storageKey && document.status !== 'VERIFIED'));
       const identityPending = requirement.key === 'owner_identity_verified' && compliance?.ownerIdentityStatus === 'PENDING_REVIEW';
-      const blocked = requirement.key === 'test_booking' || ['provider_calendar', 'service_provider_link'].includes(requirement.key);
-      const status = complete ? 'COMPLETE' : submittedDocument || identityPending ? 'PENDING_REVIEW' : blocked ? 'BLOCKED' : 'INCOMPLETE';
+      const status = complete ? 'COMPLETE' : submittedDocument || identityPending ? 'PENDING_REVIEW' : 'INCOMPLETE';
       const totalFields = fieldTotals[requirement.key] ?? 1;
       const progress = complete ? 100 : Math.max(0, Math.round(((totalFields - Math.min(missing.length, totalFields)) / totalFields) * 100));
       const ctaLabels: Record<string, string> = {
@@ -1250,6 +1487,10 @@ export class TenantSetupService {
         departments: 'Review',
         services: 'Review',
         service_pricing: 'Configure services',
+        provider_calendar: 'Configure availability',
+        service_provider_link: 'Configure team links',
+        administrator_contacts_verified: 'Verify administrator email',
+        owner_identity_verified: 'Declare ownership',
         booking_rules: 'Configure rules',
         payments: 'Configure payments',
         resources: 'Add resources',

@@ -35,6 +35,55 @@ export class VerificationService {
     return randomInt(100000, 1000000).toString();
   }
 
+  private async sendPhoneVerification(target: string, code: string): Promise<void> {
+    const apiKey = process.env.AFRICASTALKING_API_KEY?.trim();
+    const username = process.env.AFRICASTALKING_USERNAME?.trim();
+    if (!apiKey || !username) {
+      throw new ServiceUnavailableException('Phone verification is unavailable until SMS delivery is configured.');
+    }
+
+    const recipient = target.startsWith('+')
+      ? target
+      : target.startsWith('0')
+        ? `+254${target.slice(1)}`
+        : target.startsWith('254')
+          ? `+${target}`
+          : target;
+    const message = new URLSearchParams({
+      username,
+      to: recipient,
+      message: `Your Revaltrix verification code is ${code}. It expires in 10 minutes.`,
+    });
+    const senderId = process.env.AFRICASTALKING_SENDER_ID?.trim();
+    if (senderId) message.set('from', senderId);
+
+    let response: Response;
+    try {
+      response = await fetch('https://api.africastalking.com/version1/messaging', {
+        method: 'POST',
+        headers: {
+          apiKey,
+          Accept: 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: message,
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch {
+      throw new ServiceUnavailableException('Phone verification SMS could not be delivered. Please try again later.');
+    }
+
+    const result = await response.json().catch(() => null) as {
+      SMSMessageData?: { Recipients?: Array<{ status?: string; statusCode?: number }> };
+    } | null;
+    const recipients = result?.SMSMessageData?.Recipients;
+    if (!response.ok || !recipients?.length || recipients.some((entry) =>
+      entry.statusCode !== 101 && entry.status?.toLowerCase() !== 'success',
+    )) {
+      throw new ServiceUnavailableException('Phone verification SMS could not be delivered. Please try again later.');
+    }
+  }
+
   async createRegistrationVerification(userId: string, channel: 'EMAIL' | 'PHONE') {
     const identity = await this.database.client.identity.findFirst({
       where: {
@@ -183,6 +232,16 @@ export class VerificationService {
         throw new ServiceUnavailableException(
           'Verification email could not be delivered. Please try again later.',
         );
+      }
+    } else {
+      try {
+        await this.sendPhoneVerification(target, code);
+      } catch (error) {
+        await this.database.client.verificationChallenge.update({
+          where: { id: challenge.id },
+          data: { consumedAt: new Date() },
+        });
+        throw error;
       }
     }
 

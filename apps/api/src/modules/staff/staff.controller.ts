@@ -28,6 +28,8 @@ import { ReviewStaffDocumentDto } from './dto/review-staff-document.dto.js';
 import { CreateStaffTimeOffDto } from './dto/create-staff-time-off.dto.js';
 import { ReviewStaffTimeOffDto } from './dto/review-staff-time-off.dto.js';
 import { UpdateStaffDto } from './dto/update-staff.dto.js';
+import { RequestVerificationDto } from '../verification/dto/request-verification.dto.js';
+import { VerifyCodeDto } from '../verification/dto/verify-code.dto.js';
 import { StaffService } from './staff.service.js';
 
 @Controller('v1/staff')
@@ -62,6 +64,28 @@ export class StaffController {
     @Param('staffProfileId', new ParseUUIDPipe()) staffProfileId: string,
   ) {
     return this.staffService.getStaffProfile(request.auth.userId, staffProfileId);
+  }
+
+  @Post(':staffProfileId/verification/request')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('staff', 'update')
+  requestContactVerification(
+    @Req() request: AuthenticatedRequest,
+    @Param('staffProfileId', new ParseUUIDPipe()) staffProfileId: string,
+    @Body() dto: RequestVerificationDto,
+  ) {
+    return this.staffService.requestContactVerification(request.auth.userId, staffProfileId, dto.channel);
+  }
+
+  @Post(':staffProfileId/verification/verify')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('staff', 'update')
+  verifyContact(
+    @Req() request: AuthenticatedRequest,
+    @Param('staffProfileId', new ParseUUIDPipe()) staffProfileId: string,
+    @Body() dto: VerifyCodeDto,
+  ) {
+    return this.staffService.verifyContact(request.auth.userId, staffProfileId, dto.challengeId, dto.code);
   }
 
   @Patch(':staffProfileId')

@@ -102,6 +102,27 @@ export function listStaffDocuments(staffProfileId: string): Promise<StaffDocumen
   return authenticatedApiRequest(`/v1/staff/${staffProfileId}/documents`);
 }
 
+export function requestStaffContactVerification(
+  staffProfileId: string,
+  channel: 'EMAIL' | 'PHONE',
+): Promise<{ challengeId: string; channel: 'EMAIL' | 'PHONE'; target: string; expiresAt: string; deliveryStatus: 'SENT' }> {
+  return authenticatedApiRequest(`/v1/staff/${staffProfileId}/verification/request`, {
+    method: 'POST',
+    body: JSON.stringify({ channel }),
+  });
+}
+
+export function verifyStaffContact(
+  staffProfileId: string,
+  challengeId: string,
+  code: string,
+): Promise<{ verified: boolean; channel: 'EMAIL' | 'PHONE'; verificationStatus: string }> {
+  return authenticatedApiRequest(`/v1/staff/${staffProfileId}/verification/verify`, {
+    method: 'POST',
+    body: JSON.stringify({ challengeId, code }),
+  });
+}
+
 export function removeStaffProfilePhoto(staffProfileId: string): Promise<{ profilePhotoRemoved: true }> {
   return authenticatedApiRequest(`/v1/staff/${staffProfileId}/photo`, { method: 'DELETE' });
 }
@@ -144,11 +165,15 @@ export async function downloadStaffDocument(
   staffProfileId: string,
   documentId: string,
 ): Promise<Blob> {
-  return downloadPrivateStaffFile(`/v1/staff/${staffProfileId}/documents/${documentId}/download`);
+  const file = await downloadPrivateStaffFile(`/v1/staff/${staffProfileId}/documents/${documentId}/download`);
+  if (!file) throw new Error('Staff document is no longer available.');
+  return file;
 }
 
-export function downloadStaffPhoto(staffProfileId: string): Promise<Blob> {
-  return downloadPrivateStaffFile(`/v1/staff/${staffProfileId}/photo`);
+export async function downloadStaffPhoto(staffProfileId: string): Promise<Blob> {
+  const file = await downloadPrivateStaffFile(`/v1/staff/${staffProfileId}/photo`);
+  if (!file) throw new Error('Staff photo is no longer available.');
+  return file;
 }
 
 export function listStaffTimeOff(staffProfileId: string): Promise<StaffTimeOff[]> {

@@ -8,6 +8,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ProviderType, RecordStatus } from '@prisma/client';
 
 export class ProviderQueryDto {
@@ -26,11 +27,13 @@ export class ProviderQueryDto {
   status?: RecordStatus;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   page?: number;
 
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(100)

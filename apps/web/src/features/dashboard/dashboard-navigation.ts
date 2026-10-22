@@ -22,6 +22,7 @@ export interface DashboardNavItem {
   requiredTenantTypes?: TenantType[];
   requiredFeature?: TenantFeature;
   platformOnly?: boolean;
+  superAdminReviewerOnly?: boolean;
 }
 
 export interface DashboardNavGroup {
@@ -616,6 +617,13 @@ const NAVIGATION: DashboardNavGroup[] = [
         section: 'ADMINISTRATION',
         platformOnly: true,
       },
+      {
+        key: 'tenant-ownership-review',
+        label: 'Super Admin',
+        path: '/admin/super',
+        section: 'ADMINISTRATION',
+        superAdminReviewerOnly: true,
+      },
     ],
   },
 ];
@@ -624,6 +632,7 @@ export function getDashboardNavigation(
   tenantType: TenantType,
   enabledFeatures?: ReadonlySet<TenantFeature>,
   isPlatformAdmin = false,
+  canReviewSuperAdmin = false,
 ): DashboardNavGroup[] {
   return NAVIGATION.map((group) => ({
     ...group,
@@ -632,7 +641,8 @@ export function getDashboardNavigation(
         (NAVIGATION_TENANT_TYPES[item.key]?.includes(tenantType) ?? true) &&
         (!item.requiredTenantTypes || item.requiredTenantTypes.includes(tenantType)) &&
         (!item.requiredFeature || !enabledFeatures || enabledFeatures.has(item.requiredFeature)) &&
-        (!item.platformOnly || isPlatformAdmin),
+        (!item.platformOnly || isPlatformAdmin) &&
+        (!item.superAdminReviewerOnly || canReviewSuperAdmin),
     ),
   })).filter((group) => group.items.length > 0);
 }
@@ -642,12 +652,13 @@ export function isDashboardPathAvailable(
   path: string,
   enabledFeatures?: ReadonlySet<TenantFeature>,
   isPlatformAdmin = false,
+  canReviewSuperAdmin = false,
 ): boolean {
   if (path === '/tenant/dashboard' || path === '/dashboard') {
     return true;
   }
 
-  return getDashboardNavigation(tenantType, enabledFeatures, isPlatformAdmin).some((group) =>
+  return getDashboardNavigation(tenantType, enabledFeatures, isPlatformAdmin, canReviewSuperAdmin).some((group) =>
     group.items.some((item) => path === item.path || path.startsWith(`${item.path}/`)),
   );
 }

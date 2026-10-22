@@ -14,8 +14,12 @@ import {
   getStaffTimeOff,
   offboardStaffMember,
   removeStaffDepartmentAssignment,
-  progressStaffInvitation,
+  approveStaffInvitation,
+  resendStaffInvitation,
+  requestStaffPasswordReset,
   removeStaffProfilePhoto,
+  requestStaffContactVerification,
+  verifyStaffContact,
   reviewStaffDocument,
   reviewStaffTimeOff,
   updateStaffMemberStatus,
@@ -83,6 +87,14 @@ export function StaffPage({ onNavigate }: StaffPageProps) {
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
   const [documents, setDocuments] = useState<StaffDocument[]>([]);
   const [newDocumentType, setNewDocumentType] = useState<string>('PROFILE_PHOTO');
+  const [verificationChallenge, setVerificationChallenge] = useState<{
+    challengeId: string;
+    channel: 'EMAIL' | 'PHONE';
+    target: string;
+    expiresAt: string;
+  } | null>(null);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationSaving, setVerificationSaving] = useState(false);
   const [timeOff, setTimeOff] = useState<StaffTimeOffEntry[]>([]);
   const [timeOffForm, setTimeOffForm] = useState({ staffProfileId: '', startsAt: '', endsAt: '', reason: '' });
   const [accessHistory, setAccessHistory] = useState<StaffAccessLog[] | null>(null);
@@ -216,14 +228,19 @@ export function StaffPage({ onNavigate }: StaffPageProps) {
   }
 
   async function handleProgressInvitation(member: StaffMember) {
-    const customCode = window.prompt('Enter custom verification / setup code (leave blank to auto-generate):', '');
-    if (customCode === null) return;
-
     try {
       setActionFor(member.id);
       setError(null);
-      const res = await progressStaffInvitation(member.id, customCode ? { verificationCode: customCode } : undefined);
-      setMessage(res.message);
+      if (!member.emailVerified) {
+        await resendStaffInvitation(member.id);
+        setMessage('Verification email sent. The staff member must open it and verify their own address.');
+      } else if (member.registrationStatus === 'ONBOARDING') {
+        await requestStaffPasswordReset(member.id);
+        setMessage('Password setup email sent.');
+      } else {
+        await approveStaffInvitation(member.id);
+        setMessage('Staff member approved and setup email sent.');
+      }
       await loadData();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to send invitation.');
@@ -234,6 +251,8 @@ export function StaffPage({ onNavigate }: StaffPageProps) {
 
   async function showDocuments(memberId: string) {
     setSelectedProfileId(memberId);
+    setVerificationChallenge(null);
+    setVerificationCode('');
     try {
       setError(null);
       const docs = await getStaffDocuments(memberId);
@@ -248,11 +267,8 @@ export function StaffPage({ onNavigate }: StaffPageProps) {
     try {
       setSaving(true);
       setError(null);
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('type', newDocumentType);
-      await uploadStaffDocument(selectedProfileId, formData);
-      setMessage('Document uploaded successfully.');
+      const document = await uploadStaffDocument(selectedProfileId, newDocumentType, file);
+      setMessage(`Upload checks passed for ${document.fileName}. A reviewer must verify the document's identity and contents.`);
       await showDocuments(selectedProfileId);
       await loadData();
     } catch (requestError) {
@@ -273,7 +289,7 @@ export function StaffPage({ onNavigate }: StaffPageProps) {
     try {
       setActionFor(doc.id);
       setError(null);
-      await reviewStaffDocument(memberId, doc.id, { status, reviewNotes: notes });
+      await reviewStaffDocument(memberId, doc.id, status, notes);
       setMessage(`Document ${status.toLowerCase()} successfully.`);
       await showDocuments(memberId);
       await loadData();
@@ -281,6 +297,41 @@ export function StaffPage({ onNavigate }: StaffPageProps) {
       setError(requestError instanceof Error ? requestError.message : 'Document review failed.');
     } finally {
       setActionFor(null);
+    }
+  }
+
+  async function requestContactCode(channel: 'EMAIL' | 'PHONE') {
+    if (!selectedProfileId) return;
+    setVerificationSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const challenge = await requestStaffContactVerification(selectedProfileId, channel);
+      setVerificationChallenge(challenge);
+      setVerificationCode('');
+      setMessage(`Verification code sent to ${challenge.target}. It expires at ${new Date(challenge.expiresAt).toLocaleTimeString()}.`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Unable to send verification code.');
+    } finally {
+      setVerificationSaving(false);
+    }
+  }
+
+  async function submitContactCode() {
+    if (!selectedProfileId || !verificationChallenge) return;
+    setVerificationSaving(true);
+    setError(null);
+    setMessage(null);
+    try {
+      await verifyStaffContact(selectedProfileId, verificationChallenge.challengeId, verificationCode);
+      setVerificationChallenge(null);
+      setVerificationCode('');
+      setMessage(`${verificationChallenge.channel === 'EMAIL' ? 'Email' : 'Phone'} verified successfully.`);
+      await loadData();
+    } catch (verificationError) {
+      setError(verificationError instanceof Error ? verificationError.message : 'Verification code was not accepted.');
+    } finally {
+      setVerificationSaving(false);
     }
   }
 
@@ -396,7 +447,7 @@ export function StaffPage({ onNavigate }: StaffPageProps) {
     if (!selectedProfileId) return;
     try {
       setError(null);
-      await reviewStaffTimeOff(selectedProfileId, entry.id, { status });
+      await reviewStaffTimeOff(selectedProfileId, entry.id, status);
       setMessage(`Time-off request ${status.toLowerCase()}.`);
       await showTimeOff(selectedProfileId);
     } catch (requestError) {
@@ -497,7 +548,7 @@ export function StaffPage({ onNavigate }: StaffPageProps) {
   const clinicianCount = staff.filter((m) => ['DOCTOR', 'CLINICIAN', 'NURSE', 'SPECIALIST'].includes(m.professionalCategory ?? '')).length;
   const verifiedClinicianCount = staff.filter((m) => m.verificationStatus === 'VERIFIED').length;
   const onDutyCount = staff.filter((m) => m.shifts.some((s) => s.status === 'ACTIVE')).length;
-  const bookingClinicianCount = staff.filter((m) => m.assignments.some((a) => a.department.appointmentBookingEnabled)).length;
+  const bookingClinicianCount = staff.filter((member) => member.acceptsOnlineBookings).length;
   const protectedDepartmentCount = departments.filter((d) => d.requiresDepartmentPassword).length;
   const suspendedCount = staff.filter((m) => ['SUSPENDED', 'OFFBOARDED'].includes(m.status)).length;
   const todayCode = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][new Date().getDay()];
@@ -781,8 +832,7 @@ export function StaffPage({ onNavigate }: StaffPageProps) {
         <StaffDialog title="Edit staff profile" size="wide" onClose={() => setEditingStaffMember(null)}>
           <StaffProfileEditor
             member={editingStaffMember}
-            departments={departments}
-            branches={branches}
+            onCancel={() => setEditingStaffMember(null)}
             onSaved={() => {
               setEditingStaffMember(null);
               setMessage('Staff profile updated successfully.');
@@ -1047,7 +1097,7 @@ export function StaffPage({ onNavigate }: StaffPageProps) {
           <header className="dashboard-card-header">
             <div>
               <h2>Verification & documents</h2>
-              <p>Files are private; downloads are authenticated and audited.</p>
+              <p>Files are private. Uploads are checked for size and file signature; identity and credential authenticity require review.</p>
             </div>
           </header>
           <div className="tenant-form-grid">
@@ -1068,6 +1118,41 @@ export function StaffPage({ onNavigate }: StaffPageProps) {
           </div>
           {selectedProfileId && (
             <>
+              {(() => {
+                const selectedStaff = staff.find((member) => member.id === selectedProfileId);
+                if (!selectedStaff) return null;
+                return (
+                  <section className="staff-contact-verification" aria-label="Contact verification">
+                    <h3>Verify contact methods</h3>
+                    <div className="staff-contact-verification-grid">
+                      <article>
+                        <strong>Email</strong>
+                        <span>{selectedStaff.email}</span>
+                        <span className={`staff-status-badge ${selectedStaff.emailVerified ? 'is-verified' : ''}`}>
+                          {selectedStaff.emailVerified ? 'Verified' : 'Not verified'}
+                        </span>
+                        {!selectedStaff.emailVerified ? <button type="button" className="dashboard-secondary-button" disabled={verificationSaving} onClick={() => void requestContactCode('EMAIL')}>Send email code</button> : null}
+                      </article>
+                      <article>
+                        <strong>Phone</strong>
+                        <span>{selectedStaff.phone || 'No phone number on file'}</span>
+                        <span className={`staff-status-badge ${selectedStaff.phoneVerified ? 'is-verified' : ''}`}>
+                          {selectedStaff.phoneVerified ? 'Verified' : 'Not verified'}
+                        </span>
+                        {!selectedStaff.phoneVerified ? <button type="button" className="dashboard-secondary-button" disabled={verificationSaving || !selectedStaff.phone} onClick={() => void requestContactCode('PHONE')}>Send phone code</button> : null}
+                      </article>
+                    </div>
+                    {verificationChallenge ? (
+                      <form className="staff-contact-code-form" onSubmit={(event) => { event.preventDefault(); void submitContactCode(); }}>
+                        <p>Enter the six-digit code sent to {verificationChallenge.target}. Code expires {new Date(verificationChallenge.expiresAt).toLocaleString()}.</p>
+                        <label htmlFor="staff-contact-verification-code">Verification code</label>
+                        <input id="staff-contact-verification-code" autoComplete="one-time-code" inputMode="numeric" pattern="[0-9]{6}" minLength={6} maxLength={6} required value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))} />
+                        <button type="submit" className="dashboard-primary-button" disabled={verificationSaving || verificationCode.length !== 6}>{verificationSaving ? 'Verifying…' : 'Verify code'}</button>
+                      </form>
+                    ) : null}
+                  </section>
+                );
+              })()}
               <div className="staff-upload-row">
                 <label>
                   Document type
@@ -1472,7 +1557,7 @@ export function StaffPage({ onNavigate }: StaffPageProps) {
                           onClick={() => { 
                             setExpandedId(member.id); 
                             setShowShiftFor(member.id); 
-                            setShift((current) => ({ ...current, departmentId: assignments.find((item) => item.status === 'ACTIVE')?.department.id ?? '' })); 
+                            setShiftModalForm((current) => ({ ...current, staffProfileId: member.id, departmentId: assignments.find((item) => item.status === 'ACTIVE')?.department.id ?? '', branchId: member.branchId ?? '' }));
                           }}
                         >
                           Shifts

@@ -84,7 +84,7 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
         branchIds: form.getAll('branchIds').map(String),
         serviceIds: form.getAll('serviceIds').map(String),
         providerIds: form.getAll('providerIds').map(String),
-      }), 'Public services and branches saved.');
+      }), 'Public branches, services, and care team saved.');
       return;
     }
     const faqs = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[data-faq-row]'))
@@ -145,6 +145,8 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
   }
 
   const content = data.website.draftContent;
+  const hasUnpublishedChanges = data.website.publishedRevision !== data.website.revision;
+  const publishDisabled = saving || !readiness?.summary.ready || !['READY', 'LIVE'].includes(readiness.setup.status);
   const addFaq = () => setData((current) => current ? {
     ...current,
     website: { ...current.website, draftContent: { ...current.website.draftContent, faqs: [...current.website.draftContent.faqs, { question: '', answer: '' }] } },
@@ -166,9 +168,12 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
           <a className="website-editor-secondary" href={data.previewUrl} target="_blank" rel="noreferrer"><Eye size={16} /> Preview draft</a>
           {data.publicUrl ? <a className="website-editor-secondary" href={data.publicUrl} target="_blank" rel="noreferrer"><ArrowUpRight size={16} /> Open website</a> : null}
           {data.website.status === 'PUBLISHED' ? (
-            <button type="button" className="website-editor-danger" disabled={saving} onClick={() => void runAction(unpublishMyWebsite, 'Website unpublished.')}><X size={16} /> Unpublish</button>
+            <>
+              {hasUnpublishedChanges ? <button type="button" className="website-editor-primary" disabled={publishDisabled} title={!readiness?.summary.ready ? 'Complete all required launch checks first.' : undefined} onClick={() => void runAction(publishMyWebsite, 'Website updates published. Public appointment discovery now uses the new branch, service, and care-team selections.')}><Send size={16} /> Publish updates</button> : null}
+              <button type="button" className="website-editor-danger" disabled={saving} onClick={() => void runAction(unpublishMyWebsite, 'Website unpublished.')}><X size={16} /> Unpublish</button>
+            </>
           ) : (
-            <button type="button" className="website-editor-primary" disabled={saving || !readiness?.summary.ready || !['READY', 'LIVE'].includes(readiness.setup.status)} title={!readiness?.summary.ready ? 'Complete all required launch checks first.' : undefined} onClick={() => void runAction(publishMyWebsite, 'Website published.')}><Send size={16} /> Publish</button>
+            <button type="button" className="website-editor-primary" disabled={publishDisabled} title={!readiness?.summary.ready ? 'Complete all required launch checks first.' : undefined} onClick={() => void runAction(publishMyWebsite, 'Website published.')}><Send size={16} /> Publish</button>
           )}
         </div>
       </header>
@@ -180,6 +185,7 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
         <span className={`website-status-dot ${data.website.status.toLowerCase()}`} />
         <strong>{data.website.status === 'PUBLISHED' ? 'Published' : data.website.status === 'UNPUBLISHED' ? 'Unpublished' : 'Draft'}</strong>
         <span>{data.website.status === 'PUBLISHED' ? data.publicUrl : `Preview: ${data.previewUrl}`}</span>
+        {hasUnpublishedChanges ? <span role="status">Draft changes are not public yet</span> : null}
         <span className="website-readiness">Launch readiness {data.launchReadiness?.readinessPercent ?? 0}% · {data.launchReadiness?.status ?? 'NOT_STARTED'}</span>
       </section>
 
@@ -269,7 +275,7 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
             ))}</div> : <p className="website-editor-muted">No active services configured. <button type="button" onClick={() => onNavigate('/tenant/services')}>Configure services</button></p>}
           </section>
           <section className="website-editor-section">
-            <header><div><h2>Public care team</h2><p>Only selected active provider names, titles and specialties appear. Credentials are not represented as verified here.</p></div></header>
+            <header><div><h2>Public care team</h2><p>Only selected active provider names, titles and specialties appear. Credentials are not represented as verified here.</p></div><button type="button" className="website-editor-secondary" onClick={() => onNavigate('/tenant/providers')}>Configure providers</button></header>
             {data.providers.length ? <div className="website-editor-choice-list">{data.providers.map((provider) => (
               <label className="website-editor-choice" key={provider.id}><input type="checkbox" name="providerIds" value={provider.id} defaultChecked={content.providerIds.includes(provider.id)} /><span><strong>{provider.user.displayName}</strong><small>{[provider.professionalTitle, provider.specialty].filter(Boolean).join(' · ') || 'Provider profile'}{provider.hasAvailability ? ' · active availability configured' : ' · no active availability'}</small></span></label>
             ))}</div> : <p className="website-editor-muted">No active provider profiles are available to publish.</p>}
@@ -280,7 +286,7 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
 
       {tab === 'launch' ? (
         <section className="website-editor-section website-launch-checklist">
-          <header><div><h2>Website launch checklist</h2><p>These 22 checks use the organization’s shared persisted readiness data. Public publishing remains blocked until all required checks pass and the organization is READY or LIVE.</p></div>
+          <header><div><h2>Website launch checklist</h2><p>These checks use the organization’s shared persisted readiness data. Public publishing remains blocked until all required checks pass and the organization is READY or LIVE.</p></div>
             {readiness ? <strong>{readiness.summary.completed}/{readiness.summary.total} complete</strong> : null}
           </header>
           {!readiness ? <p className="website-editor-muted" role="status">Loading current organization readiness…</p> : (

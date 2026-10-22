@@ -106,15 +106,6 @@ export interface AppointmentFacility {
     branchId: string | null;
     departmentId: string | null;
   }>;
-  providers: Array<{
-    id: string;
-    professionalTitle: string | null;
-    specialty: string | null;
-    user: { displayName: string };
-    eligibleServiceIds: string[];
-    branchIds: Array<string | null>;
-    departmentIds: Array<string | null>;
-  }>;
 }
 
 export interface AppointmentSlot {

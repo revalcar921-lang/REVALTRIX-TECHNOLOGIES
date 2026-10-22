@@ -8,6 +8,7 @@ import { Prisma, ProviderType, RecordStatus } from '@prisma/client';
 import { DatabaseService } from '../../database/database.service.js';
 import { AuthorizationService } from '../authorization/authorization.service.js';
 import { CreateProviderDto } from './dto/create-provider.dto.js';
+import { CreateProviderAvailabilityDto } from './dto/create-provider-availability.dto.js';
 import { ProviderQueryDto } from './dto/provider-query.dto.js';
 import { UpdateProviderDto } from './dto/update-provider.dto.js';
 
@@ -95,6 +96,57 @@ export class ProvidersService {
     };
   }
 
+  async listEligibleUsers(userId: string) {
+    const context = await this.authorization.getContext(userId);
+    const now = new Date();
+    const staffProfiles = await this.database.client.staffProfile.findMany({
+      where: {
+        tenantId: context.tenantId,
+        status: RecordStatus.ACTIVE,
+        professionalCategory: { not: null },
+        user: {
+          is: {
+            status: RecordStatus.ACTIVE,
+            deletedAt: null,
+            memberships: {
+              some: {
+                tenantId: context.tenantId,
+                status: 'ACTIVE',
+                startsAt: { lte: now },
+                OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+              },
+            },
+            providerProfiles: {
+              none: { tenantId: context.tenantId },
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        staffNumber: true,
+        professionalCategory: true,
+        jobTitle: true,
+        specialty: true,
+        licenseNumber: true,
+        branchId: true,
+        departmentId: true,
+        user: { select: { id: true, displayName: true, username: true } },
+        services: { select: { serviceId: true } },
+        shifts: {
+          where: { status: 'ACTIVE' },
+          select: { startTime: true, endTime: true, daysOfWeek: true, branchId: true, departmentId: true },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    });
+    return staffProfiles.map(({ services, ...profile }) => ({
+      ...profile,
+      serviceIds: services.map(({ serviceId }) => serviceId),
+    }));
+  }
+
   async getById(userId: string, providerId: string) {
     const context = await this.authorization.getContext(userId);
 
@@ -112,6 +164,112 @@ export class ProvidersService {
     }
 
     return provider;
+  }
+
+  async listAvailability(userId: string, providerId: string) {
+    const context = await this.authorization.getContext(userId);
+    const provider = await this.database.client.providerProfile.findFirst({
+      where: { id: providerId, tenantId: context.tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!provider) throw new NotFoundException('Provider not found');
+    return this.database.client.providerAvailability.findMany({
+      where: { tenantId: context.tenantId, providerId, isActive: true },
+      include: {
+        branch: { select: { id: true, name: true } },
+        department: { select: { id: true, name: true } },
+        service: { select: { id: true, name: true } },
+      },
+      orderBy: [{ dayOfWeek: 'asc' }, { startMinute: 'asc' }],
+    });
+  }
+
+  async createAvailability(
+    userId: string,
+    providerId: string,
+    dto: CreateProviderAvailabilityDto,
+  ) {
+    const context = await this.authorization.getContext(userId);
+    const provider = await this.database.client.providerProfile.findFirst({
+      where: { id: providerId, tenantId: context.tenantId, status: RecordStatus.ACTIVE, deletedAt: null },
+      select: { id: true },
+    });
+    if (!provider) throw new NotFoundException('Active provider not found');
+    if (dto.endMinute <= dto.startMinute) {
+      throw new BadRequestException('Availability end time must be after its start time');
+    }
+    try {
+      new Intl.DateTimeFormat('en', { timeZone: dto.timeZone }).format(new Date());
+    } catch {
+      throw new BadRequestException('Enter a valid IANA time zone');
+    }
+    const effectiveFrom = new Date(`${dto.effectiveFrom}T00:00:00.000Z`);
+    const effectiveTo = dto.effectiveTo
+      ? new Date(`${dto.effectiveTo}T00:00:00.000Z`)
+      : null;
+    if (effectiveTo && effectiveTo < effectiveFrom) {
+      throw new BadRequestException('Availability end date must not be before its start date');
+    }
+
+    const [branch, department, service] = await Promise.all([
+      this.database.client.branch.findFirst({
+        where: { id: dto.branchId, tenantId: context.tenantId, status: RecordStatus.ACTIVE, deletedAt: null },
+        select: { id: true },
+      }),
+      this.database.client.department.findFirst({
+        where: { id: dto.departmentId, tenantId: context.tenantId, status: RecordStatus.ACTIVE, deletedAt: null },
+        select: { id: true, branchId: true },
+      }),
+      this.database.client.service.findFirst({
+        where: { id: dto.serviceId, tenantId: context.tenantId, status: RecordStatus.ACTIVE, deletedAt: null },
+        select: { id: true, branchId: true, departmentId: true },
+      }),
+    ]);
+    if (!branch) throw new BadRequestException('Select an active branch in this organization');
+    if (!department || (department.branchId && department.branchId !== branch.id)) {
+      throw new BadRequestException('Select a department available at the selected branch');
+    }
+    if (!service || (service.branchId && service.branchId !== branch.id) ||
+      (service.departmentId && service.departmentId !== department.id)) {
+      throw new BadRequestException('Select a service available to the selected department and branch');
+    }
+
+    return this.database.client.providerAvailability.create({
+      data: {
+        tenantId: context.tenantId,
+        providerId,
+        branchId: branch.id,
+        departmentId: department.id,
+        serviceId: service.id,
+        dayOfWeek: dto.dayOfWeek,
+        startMinute: dto.startMinute,
+        endMinute: dto.endMinute,
+        timeZone: dto.timeZone,
+        effectiveFrom,
+        effectiveTo,
+        createdByUserId: userId,
+      },
+      include: {
+        branch: { select: { id: true, name: true } },
+        department: { select: { id: true, name: true } },
+        service: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  async deactivateAvailability(userId: string, providerId: string, availabilityId: string) {
+    const context = await this.authorization.getContext(userId);
+    const result = await this.database.client.providerAvailability.updateMany({
+      where: {
+        id: availabilityId,
+        providerId,
+        tenantId: context.tenantId,
+        isActive: true,
+      },
+      data: { isActive: false },
+    });
+    if (!result.count) throw new NotFoundException('Active availability rule not found');
+    return { id: availabilityId, isActive: false };
   }
 
   async create(userId: string, dto: CreateProviderDto) {

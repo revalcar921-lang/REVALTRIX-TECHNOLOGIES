@@ -113,10 +113,12 @@ export class StaffService {
           select: {
             identities: {
               where: {
-                type: IdentityType.EMAIL,
+                type: { in: [IdentityType.EMAIL, IdentityType.PHONE] },
                 status: 'ACTIVE',
               },
               select: {
+                type: true,
+                normalizedValue: true,
                 verifiedAt: true,
                 credentialHash: true,
               },
@@ -190,7 +192,12 @@ export class StaffService {
     });
 
     return staff.map(({ user, nationalIdEncrypted, profilePhotoKey, services, ...profile }) => {
-      const emailIdentity = user.identities[0];
+      const emailIdentity = user.identities.find((identity) =>
+        identity.type === IdentityType.EMAIL && identity.normalizedValue === profile.email.trim().toLowerCase(),
+      );
+      const phoneIdentity = user.identities.find((identity) =>
+        identity.type === IdentityType.PHONE && identity.normalizedValue === profile.phone?.trim().replace(/[^\d+]/g, ''),
+      );
       return {
         ...profile,
         nationalId: nationalIdEncrypted ? 'On file' : null,
@@ -210,8 +217,103 @@ export class StaffService {
             ? 'EXPIRED'
             : profile.invitationStatus,
         registrationStatus: user.registrations[0]?.status ?? null,
+        phoneVerified: Boolean(phoneIdentity?.verifiedAt),
       };
     });
+  }
+
+  async requestContactVerification(userId: string, staffProfileId: string, channel: 'EMAIL' | 'PHONE') {
+    const tenantId = await this.getTenantIdForUser(userId, staffProfileId);
+    const staff = await this.database.client.staffProfile.findFirst({
+      where: { id: staffProfileId, tenantId, status: { in: [StaffStatus.ACTIVE, StaffStatus.INVITED] } },
+      select: { userId: true, email: true, phone: true },
+    });
+    if (!staff) throw new NotFoundException('Staff member not found');
+
+    const value = channel === IdentityType.EMAIL ? staff.email : staff.phone;
+    if (!value?.trim()) throw new BadRequestException(`No ${channel.toLowerCase()} is saved for this staff member`);
+    const normalizedValue = channel === IdentityType.EMAIL
+      ? value.trim().toLowerCase()
+      : value.trim().replace(/[^\d+]/g, '');
+    const existing = await this.database.client.identity.findUnique({
+      where: { type_normalizedValue: { type: channel, normalizedValue } },
+      select: { id: true, userId: true, verifiedAt: true, status: true },
+    });
+    if (existing && existing.userId !== staff.userId) {
+      throw new ConflictException('This contact method belongs to another account');
+    }
+    if (existing?.verifiedAt && existing.status === 'ACTIVE') {
+      throw new BadRequestException(`${channel === IdentityType.EMAIL ? 'Email' : 'Phone'} is already verified`);
+    }
+
+    await this.database.client.identity.upsert({
+      where: { type_normalizedValue: { type: channel, normalizedValue } },
+      create: {
+        userId: staff.userId,
+        type: channel,
+        value: value.trim(),
+        normalizedValue,
+        status: 'ACTIVE',
+      },
+      update: { status: 'ACTIVE', value: value.trim(), verifiedAt: null },
+    });
+    const challenge = await this.verificationService.createRegistrationVerification(staff.userId, channel);
+    await this.database.client.auditEvent.create({
+      data: {
+        tenantId,
+        actorUserId: userId,
+        action: 'staff.contact_verification.requested',
+        resourceType: 'staff_profile',
+        resourceId: staffProfileId,
+        outcome: 'SUCCESS',
+        metadata: { channel, challengeId: challenge.challengeId },
+      },
+    });
+    return challenge;
+  }
+
+  async verifyContact(userId: string, staffProfileId: string, challengeId: string, code: string) {
+    const tenantId = await this.getTenantIdForUser(userId, staffProfileId);
+    const staff = await this.database.client.staffProfile.findFirst({
+      where: { id: staffProfileId, tenantId, status: { in: [StaffStatus.ACTIVE, StaffStatus.INVITED] } },
+      select: { userId: true, email: true, phone: true, branchId: true },
+    });
+    if (!staff) throw new NotFoundException('Staff member not found');
+    const challenge = await this.database.client.verificationChallenge.findFirst({
+      where: { id: challengeId, userId: staff.userId, purpose: VerificationPurpose.REGISTRATION },
+      select: { channel: true, target: true },
+    });
+    if (!challenge) throw new NotFoundException('Verification challenge not found');
+    const currentValue = challenge.channel === 'EMAIL' ? staff.email : staff.phone;
+    const currentTarget = challenge.channel === 'EMAIL'
+      ? currentValue?.trim().toLowerCase()
+      : currentValue?.trim().replace(/[^\d+]/g, '');
+    if (!currentTarget || currentTarget !== challenge.target) {
+      throw new BadRequestException('This code was sent to a previous contact value. Request a new code.');
+    }
+    const result = await this.verificationService.verifyRegistrationCode(staff.userId, challengeId, code);
+    await this.database.client.identity.updateMany({
+      where: {
+        userId: staff.userId,
+        type: challenge.channel,
+        normalizedValue: { not: challenge.target },
+        status: 'ACTIVE',
+      },
+      data: { status: 'INACTIVE', verifiedAt: null },
+    });
+    await this.database.client.auditEvent.create({
+      data: {
+        tenantId,
+        actorUserId: userId,
+        branchId: staff.branchId,
+        action: 'staff.contact_verification.completed',
+        resourceType: 'staff_profile',
+        resourceId: staffProfileId,
+        outcome: 'SUCCESS',
+        metadata: { channel: challenge.channel },
+      },
+    });
+    return result;
   }
 
   async getStaffProfile(userId: string, staffProfileId: string) {

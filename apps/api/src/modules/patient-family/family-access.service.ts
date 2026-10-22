@@ -11,6 +11,8 @@ import { createHash, randomInt, randomUUID, timingSafeEqual } from 'node:crypto'
 import { basename } from 'node:path';
 import type { Request } from 'express';
 import { DatabaseService } from '../../database/database.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
+import { NotificationChannel } from '@prisma/client';
 import { PrivateObjectStorageService } from '../storage/private-object-storage.service.js';
 import { VerificationEmailService } from '../communication/email/verification-email.service.js';
 import type {
@@ -53,6 +55,7 @@ export class FamilyAccessService {
     private readonly config: ConfigService,
     private readonly storage: PrivateObjectStorageService,
     private readonly verificationEmail: VerificationEmailService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async requestStepUp(userId: string, sessionId: string) {
@@ -1067,6 +1070,25 @@ export class FamilyAccessService {
         });
       });
     }
+    const patientProfiles = await this.database.client.patientProfile.findMany({
+      where: { id: { in: [registration.registeredByPatientProfileId, registration.dependentPatientProfileId] } },
+      select: { userId: true },
+    });
+    const decision = dto.decision;
+    const reason = dto.decision === 'REJECT' ? dto.rejectionReason?.trim() : undefined;
+    await Promise.all([...new Set(patientProfiles.map(({ userId }) => userId))].map((recipientUserId) =>
+      this.notifications.createNotification({
+        recipientUserId,
+        type: `PATIENT_DEPENDENT_VERIFICATION_${decision === 'APPROVE' ? 'APPROVED' : 'REJECTED'}`,
+        title: decision === 'APPROVE' ? 'Dependent verification approved' : 'Dependent verification needs changes',
+        body: decision === 'APPROVE'
+          ? 'The dependent verification documents were approved.'
+          : `The dependent verification documents were rejected. Reason: ${reason}`,
+        data: { registrationId: registration.id, decision, ...(reason ? { reason } : {}) },
+        channels: [NotificationChannel.IN_APP, NotificationChannel.EMAIL],
+        idempotencyPrefix: `dependent-registration-review:${registration.id}:${decision}`,
+      }),
+    ));
     return this.dependentStatus(registration.registeredByUserId, registration.id);
   }
 

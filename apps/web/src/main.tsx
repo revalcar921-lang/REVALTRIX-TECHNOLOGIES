@@ -16,6 +16,7 @@ import { PatientDashboardPage } from './features/patient-dashboard/pages/Patient
 import { PatientProfilePage } from './features/patient-profile/pages/PatientProfilePage.js';
 import { PatientFamilyPage } from './features/patient-family/pages/PatientFamilyPage.js';
 import { FamilyVerificationReviewPage } from './features/patient-family/pages/FamilyVerificationReviewPage.js';
+import { SuperAdminPage } from './features/dashboard/pages/SuperAdminPage.js';
 import { StaffDashboardPage } from './features/staff/pages/StaffDashboardPage.js';
 import { DepartmentWorkspacePage } from './features/staff/pages/DepartmentWorkspacePage.js';
 import { StaffPasswordResetPage } from './features/staff/pages/StaffPasswordResetPage.js';
@@ -35,6 +36,7 @@ type Route =
   | { name: 'patient-profile' }
   | { name: 'patient-family' }
   | { name: 'family-verification-review' }
+  | { name: 'super-admin' }
   | { name: 'staff-dashboard' }
   | { name: 'staff-password-reset' }
   | { name: 'staff-department'; departmentId?: string }
@@ -83,6 +85,10 @@ function getRoute(): Route {
 
   if (path === '/admin/family-verification') {
     return { name: 'family-verification-review' };
+  }
+
+  if (path === '/admin/super' || path === '/admin/tenant-ownership') {
+    return { name: 'super-admin' };
   }
 
   if (path === '/patient/dashboard' || path === '/patient' || path.startsWith('/patient/')) {
@@ -422,6 +428,17 @@ function App() {
     return (
       <FamilyVerificationReviewPage
         onNavigate={navigate}
+        onLogout={() => {
+          clearAuthSession();
+          navigate('/login');
+        }}
+      />
+    );
+  }
+
+  if (route.name === 'super-admin') {
+    return (
+      <SuperAdminPage
         onLogout={() => {
           clearAuthSession();
           navigate('/login');

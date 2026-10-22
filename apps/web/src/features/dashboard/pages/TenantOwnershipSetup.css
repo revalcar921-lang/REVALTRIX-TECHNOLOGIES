@@ -1,0 +1,128 @@
+.tenant-ownership-setup {
+  display: grid;
+  gap: 18px;
+}
+
+.tenant-ownership-status {
+  margin: 0;
+  color: #405963;
+}
+
+.tenant-ownership-party-list {
+  display: grid;
+  gap: 12px;
+}
+
+.tenant-ownership-party {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #d9e2e5;
+  border-radius: 4px;
+  padding: 16px;
+  background: #fff;
+}
+
+.tenant-ownership-party > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tenant-ownership-party > header span:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.tenant-ownership-party > header small,
+.tenant-ownership-evidence-file {
+  color: #5b6d75;
+  overflow-wrap: anywhere;
+}
+
+.tenant-ownership-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.tenant-ownership-evidence-grid > label {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  color: #304b59;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tenant-ownership-evidence-file {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.tenant-ownership-evidence-file button,
+.tenant-ownership-file-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tenant-ownership-evidence-file button {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: #9c3c36;
+  cursor: pointer;
+}
+
+.tenant-ownership-file-input {
+  min-height: 40px;
+  padding: 8px;
+  border: 1px dashed #bac9ce;
+  border-radius: 4px;
+  background: #fbfcfc;
+}
+
+.tenant-ownership-file-input input {
+  min-width: 0;
+  max-width: 100%;
+  font-size: 12px;
+}
+
+.tenant-ownership-declaration {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: #304b59;
+  line-height: 1.5;
+}
+
+.tenant-ownership-declaration input {
+  margin-top: 3px;
+  accent-color: #176f66;
+}
+
+.tenant-setup-config-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  min-height: 36px;
+  border: 1px solid #d7b5b2;
+  border-radius: 4px;
+  padding: 6px 10px;
+  background: #fff;
+  color: #8c302a;
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .tenant-ownership-party > header {
+    flex-direction: column;
+  }
+}

@@ -6197,6 +6197,16 @@ img.staff-avatar { object-fit: cover; }
 .staff-segmented button.is-active { background: #dcefeb; color: #155f59; font-weight: 700; }
 .staff-upload-row { display: flex; flex-wrap: wrap; align-items: end; gap: 0.75rem; margin: 1rem 0; }
 .staff-upload-row label { display: grid; min-width: min(100%, 240px); gap: 0.3rem; font-size: 0.82rem; }
+.staff-contact-verification { display: grid; gap: 0.75rem; margin: 1rem 0; border: 1px solid #dce6e9; border-radius: 5px; padding: 1rem; background: #f8fbfb; }
+.staff-contact-verification h3 { margin: 0; color: #203a47; font-size: 0.95rem; }
+.staff-contact-verification-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
+.staff-contact-verification-grid article { display: grid; justify-items: start; gap: 0.4rem; min-width: 0; border: 1px solid #e0e7ea; border-radius: 4px; padding: 0.75rem; background: #fff; }
+.staff-contact-verification-grid article > span:not(.staff-status-badge) { overflow-wrap: anywhere; color: #536b79; font-size: 0.82rem; }
+.staff-status-badge.is-verified { border-color: #9bd4c4; background: #e9f7f2; color: #155f59; }
+.staff-contact-code-form { display: grid; grid-template-columns: minmax(180px, 1fr) auto; align-items: end; gap: 0.65rem; }
+.staff-contact-code-form p { grid-column: 1 / -1; margin: 0; color: #536b79; font-size: 0.82rem; }
+.staff-contact-code-form label { display: grid; gap: 0.3rem; color: #355462; font-size: 0.82rem; font-weight: 600; }
+.staff-contact-code-form input { min-height: 40px; border: 1px solid #cbd8de; border-radius: 4px; padding: 0.4rem 0.55rem; font: inherit; letter-spacing: 0.12em; }
 .staff-analytics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.7rem 1.25rem; }
 .staff-analytics-row { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem 0.75rem; align-items: center; }
 .staff-analytics-row span { color: #536b79; font-size: 0.82rem; }
@@ -6243,6 +6253,9 @@ img.staff-avatar { object-fit: cover; }
 
 @media (max-width: 600px) {
   .staff-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .staff-contact-verification-grid,
+  .staff-contact-code-form { grid-template-columns: 1fr; }
+  .staff-contact-code-form p { grid-column: auto; }
   .staff-wizard-steps { grid-template-columns: repeat(5, minmax(44px, 1fr)); overflow-x: auto; }
   .staff-wizard-steps li { display: grid; justify-items: center; gap: 0.2rem; font-size: 0.66rem; text-align: center; }
   .staff-document-pickers,

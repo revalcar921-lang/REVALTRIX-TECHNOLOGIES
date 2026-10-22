@@ -167,17 +167,6 @@ export class AppointmentsService {
             deletedAt: null,
           },
         },
-        providerAvailabilityRules: {
-          some: {
-            isActive: true,
-            provider: {
-              is: {
-                status: RecordStatus.ACTIVE,
-                deletedAt: null,
-              },
-            },
-          },
-        },
         ...(search ? {
           OR: [
             { name: { contains: search, mode: 'insensitive' } },
@@ -192,11 +181,6 @@ export class AppointmentsService {
               { name: { contains: search, mode: 'insensitive' } },
               { category: { contains: search, mode: 'insensitive' } },
               { description: { contains: search, mode: 'insensitive' } },
-            ] } } },
-            { providers: { some: { status: RecordStatus.ACTIVE, deletedAt: null, OR: [
-              { professionalTitle: { contains: search, mode: 'insensitive' } },
-              { specialty: { contains: search, mode: 'insensitive' } },
-              { user: { is: { displayName: { contains: search, mode: 'insensitive' } } } },
             ] } } },
           ],
         } : {}),
@@ -259,29 +243,11 @@ export class AppointmentsService {
           },
           orderBy: { name: 'asc' },
         },
-        providers: {
-          where: {
-            status: RecordStatus.ACTIVE,
-            deletedAt: null,
-            availabilityRules: { some: { isActive: true } },
-          },
-          select: {
-            id: true,
-            professionalTitle: true,
-            specialty: true,
-            user: { select: { displayName: true } },
-            availabilityRules: {
-              where: { isActive: true },
-              select: { branchId: true, departmentId: true, serviceId: true },
-            },
-          },
-          orderBy: { user: { displayName: 'asc' } },
-        },
       },
       orderBy: { name: 'asc' },
       take: 100,
     });
-    return facilities.flatMap(({ providers, website, ...facility }) => {
+    return facilities.flatMap(({ website, ...facility }) => {
       if (!website?.publishedContent) return [];
       const publicContent = parseTenantWebsiteContent(
         website.publishedContent,
@@ -294,31 +260,9 @@ export class AppointmentsService {
       );
       if (!branches.length) return [];
 
-      const providersWithPublicServices = providers.map(({ availabilityRules, ...provider }) => {
-        const eligibleServices = facility.services.filter((service) =>
-          publicServiceIds.has(service.id) &&
-          availabilityRules.some((rule) =>
-            (!rule.serviceId || rule.serviceId === service.id) &&
-            (!rule.branchId || publicBranchIds.has(rule.branchId)) &&
-            (!rule.branchId || !service.branchId || rule.branchId === service.branchId) &&
-            (!rule.departmentId || !service.departmentId || rule.departmentId === service.departmentId),
-          ),
-        );
-        return {
-          ...provider,
-          eligibleServiceIds: eligibleServices.map((service) => service.id),
-          branchIds: [...new Set(availabilityRules
-            .map((rule) => rule.branchId)
-            .filter((branchId) => branchId === null || publicBranchIds.has(branchId)))],
-          departmentIds: [...new Set(availabilityRules.map((rule) => rule.departmentId))],
-        };
-      });
       const services = facility.services.filter((service) =>
         publicServiceIds.has(service.id) &&
-        (!service.branchId || publicBranchIds.has(service.branchId)) &&
-        providersWithPublicServices.some((provider) =>
-          provider.eligibleServiceIds.includes(service.id),
-        ),
+        (!service.branchId || publicBranchIds.has(service.branchId)),
       );
       if (!services.length) return [];
       const serviceDepartmentIds = new Set(

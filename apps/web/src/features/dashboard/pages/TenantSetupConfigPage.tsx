@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { CheckCircle2, LoaderCircle, Save } from 'lucide-react';
 import { getBranches } from '../../branches/api/branches.api.js';
 import type { Branch } from '../../branches/types/branch.types.js';
+import { TenantOwnershipSetup } from './TenantOwnershipSetup.js';
 import {
   acceptTenantTerms,
   createOperationalResource,
@@ -13,13 +14,14 @@ import {
 } from '../api/tenant-setup.api.js';
 import './TenantSetupConfigPage.css';
 
-type SetupSection = 'booking' | 'payments' | 'resources' | 'documents' | 'terms';
+type SetupSection = 'booking' | 'payments' | 'resources' | 'documents' | 'terms' | 'ownership';
 
 const sections: Array<{ key: SetupSection; title: string }> = [
   { key: 'booking', title: 'Booking rules' },
   { key: 'payments', title: 'Payment preferences' },
   { key: 'resources', title: 'Operational resources' },
   { key: 'documents', title: 'Compliance documents' },
+  { key: 'ownership', title: 'Ownership verification' },
   { key: 'terms', title: 'Terms acceptance' },
 ];
 
@@ -252,6 +254,8 @@ export function TenantSetupConfigPage() {
           {settings?.compliance?.termsAcceptedAt ? <p className="tenant-setup-config-message"><CheckCircle2 size={16} /> Version {settings.compliance.termsVersion} accepted at {new Date(settings.compliance.termsAcceptedAt).toLocaleString()}.</p> : <button type="button" className="tenant-primary-action" disabled={saving || !settings?.currentTermsVersion} onClick={() => void acceptCurrentTerms()}><CheckCircle2 size={16} /> Accept current terms</button>}
         </section>
       ) : null}
+
+      {section === 'ownership' ? <TenantOwnershipSetup /> : null}
     </main>
   );
 }

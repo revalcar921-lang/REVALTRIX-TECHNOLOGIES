@@ -5,29 +5,12 @@ import type { Branch } from '../../branches/types/branch.types.js';
 import type { Department } from '../../departments/types/department.types.js';
 import { createStaff, uploadStaffDocument } from '../api/staff.api.js';
 import type { CreateStaffInput, StaffMember, StaffProfessionalCategory } from '../types/staff.types.js';
+import { PROFESSIONAL_TITLE_OPTIONS } from '../types/professional-title-options.js';
 
 const DAYS = [
   ['MON', 'Mon'], ['TUE', 'Tue'], ['WED', 'Wed'], ['THU', 'Thu'],
   ['FRI', 'Fri'], ['SAT', 'Sat'], ['SUN', 'Sun'],
 ] as const;
-
-const TITLES: Array<{ label: string; jobTitle: string; category: StaffProfessionalCategory }> = [
-  { label: 'Dr.', jobTitle: 'Doctor', category: 'DOCTOR' },
-  { label: 'Dentist', jobTitle: 'Dentist', category: 'DENTIST' },
-  { label: 'Nurse', jobTitle: 'Nurse', category: 'NURSE' },
-  { label: 'Midwife', jobTitle: 'Midwife', category: 'MIDWIFE' },
-  { label: 'Pharmacist', jobTitle: 'Pharmacist', category: 'PHARMACIST' },
-  { label: 'Lab Scientist', jobTitle: 'Laboratory Scientist', category: 'LAB_SCIENTIST' },
-  { label: 'Radiographer', jobTitle: 'Radiographer', category: 'RADIOGRAPHER' },
-  { label: 'Physiotherapist', jobTitle: 'Physiotherapist', category: 'PHYSIOTHERAPIST' },
-  { label: 'Nutritionist', jobTitle: 'Nutritionist', category: 'NUTRITIONIST' },
-  { label: 'Psychologist', jobTitle: 'Psychologist', category: 'PSYCHOLOGIST' },
-  { label: 'Optometrist', jobTitle: 'Optometrist', category: 'OPTOMETRIST' },
-  { label: 'Technician', jobTitle: 'Technician', category: 'TECHNICIAN' },
-  { label: 'Administrator', jobTitle: 'Administrator', category: 'ADMIN' },
-  { label: 'Receptionist', jobTitle: 'Receptionist', category: 'RECEPTIONIST' },
-  { label: 'Other', jobTitle: 'Other', category: 'OTHER' },
-];
 
 const INITIAL_DAYS = ['MON', 'TUE', 'WED', 'THU', 'FRI'];
 
@@ -119,7 +102,7 @@ export function StaffRegistrationForm({ departments, branches, onCreated }: Staf
 
   const activeDepartments = departments.filter((department) => department.status === 'ACTIVE');
   const selectedDepartment = activeDepartments.find((department) => department.id === departmentId);
-  const selectedTitle = TITLES.find((option) => option.label === title);
+  const selectedTitle = PROFESSIONAL_TITLE_OPTIONS.find((option) => option.label === title);
   const availableServices = services.filter((service) =>
     (!service.departmentId || service.departmentId === departmentId) &&
     (!service.branchId || service.branchId === branchId),
@@ -264,7 +247,7 @@ export function StaffRegistrationForm({ departments, branches, onCreated }: Staf
           </div>
           <div className="tenant-form-grid">
             <label className="staff-field-wide">Full name<input required autoComplete="name" maxLength={300} value={fullName} onChange={(event) => setFullName(event.target.value)} /></label>
-            <label>Professional title<select required value={title} onChange={(event) => setTitle(event.target.value)}><option value="">Select title</option>{TITLES.map((option) => <option key={option.label} value={option.label}>{option.label}</option>)}</select></label>
+            <label>Professional title<select required value={title} onChange={(event) => setTitle(event.target.value)}><option value="">Select title</option>{PROFESSIONAL_TITLE_OPTIONS.map((option) => <option key={option.label} value={option.label}>{option.label}</option>)}</select></label>
             {title === 'Other' && <label>Professional title<input required maxLength={150} value={customTitle} onChange={(event) => setCustomTitle(event.target.value)} placeholder="Enter title" /></label>}
             <label>Work email<input required type="email" autoComplete="email" maxLength={320} value={workEmail} onChange={(event) => setWorkEmail(event.target.value)} /></label>
             <label>Phone number<input required type="tel" autoComplete="tel" minLength={7} maxLength={50} value={phone} onChange={(event) => setPhone(event.target.value)} /></label>

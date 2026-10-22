@@ -28,6 +28,8 @@ import { ShopPage } from '../../shop/components/ShopPage.js';
 import { TenantFeatureAccessPage } from './TenantFeatureAccessPage.js';
 import { TenantWebsiteEditorPage } from '../../tenant-websites/pages/TenantWebsiteEditorPage.js';
 import { TenantSetupConfigPage } from './TenantSetupConfigPage.js';
+import { ProvidersPage } from '../../providers/components/ProvidersPage.js';
+import { getSuperAdminApprovalAccess } from '../api/super-admin.api.js';
 
 interface AuthenticatedDashboardPageProps {
   requestedPath: string;
@@ -42,6 +44,7 @@ export function AuthenticatedDashboardPage({
   const [membership, setMembership] = useState<DashboardMembership | null>(null);
   const [tenantFeatures, setTenantFeatures] = useState<TenantFeatureState[]>([]);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
+  const [canReviewSuperAdmin, setCanReviewSuperAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,10 +61,11 @@ export function AuthenticatedDashboardPage({
           }
         }
 
-        const [result, featureStates, canManageFeatures] = await Promise.all([
+        const [result, featureStates, canManageFeatures, superAdminReviewAccess] = await Promise.all([
           getDashboard(),
           getTenantFeatures(),
           getTenantFeatureManagementAccess(),
+          getSuperAdminApprovalAccess(),
         ]);
 
         if (cancelled) {
@@ -71,6 +75,7 @@ export function AuthenticatedDashboardPage({
         setDashboard(result);
         setTenantFeatures(featureStates);
         setIsPlatformAdmin(canManageFeatures);
+        setCanReviewSuperAdmin(superAdminReviewAccess);
 
         if (!result.membership || !result.tenant) {
           setError(
@@ -189,7 +194,7 @@ export function AuthenticatedDashboardPage({
     );
 
     if (
-      !isDashboardPathAvailable(tenantType, requestedPath, enabledFeatures, isPlatformAdmin) &&
+      !isDashboardPathAvailable(tenantType, requestedPath, enabledFeatures, isPlatformAdmin, canReviewSuperAdmin) &&
       !legacyDashboardRoute
     ) {
       return (
@@ -235,6 +240,10 @@ export function AuthenticatedDashboardPage({
 
     if (requestedPath === '/tenant/staff') {
       return <StaffPage onNavigate={onNavigate} />;
+    }
+
+    if (requestedPath === '/tenant/providers') {
+      return <ProvidersPage onNavigate={onNavigate} />;
     }
 
     if (requestedPath === '/tenant/services') {
@@ -305,6 +314,7 @@ export function AuthenticatedDashboardPage({
         )
       }
       isPlatformAdmin={isPlatformAdmin}
+      canReviewSuperAdmin={canReviewSuperAdmin}
       onNavigate={onNavigate}
       onLogout={handleLogout}
     >
