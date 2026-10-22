@@ -1,0 +1,20 @@
+.appointment-map-frame {
+  display: grid;
+  gap: 7px;
+}
+
+.appointment-discovery-map {
+  width: 100%;
+  min-height: 280px;
+  border: 1px solid #d8e3dd;
+  border-radius: 5px;
+  background: #e8efea;
+}
+
+.appointment-map-notice,
+.appointment-map-empty {
+  margin: 0;
+  color: #63746b;
+  font-size: 12px;
+  line-height: 1.5;
+}

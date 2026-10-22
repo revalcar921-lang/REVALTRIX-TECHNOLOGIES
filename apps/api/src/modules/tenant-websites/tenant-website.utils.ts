@@ -73,6 +73,15 @@ export function createDefaultTenantWebsiteContent(name: string): TenantWebsiteCo
   };
 }
 
+export function structuredDataTypeForTenant(tenantType: string): TenantWebsiteContent['structuredDataType'] {
+  if (tenantType === 'HOSPITAL') return 'Hospital';
+  if (tenantType === 'DENTAL_CLINIC') return 'DentalClinic';
+  if (['CLINIC', 'SPECIALIST_PRACTICE', 'MEDICAL_CENTER', 'MATERNITY_CENTER', 'REHABILITATION_CENTER', 'HOME_HEALTH_PROVIDER'].includes(tenantType)) {
+    return 'MedicalClinic';
+  }
+  return 'Organization';
+}
+
 export function websiteSlugBase(name: string): string {
   const slug = name
     .normalize('NFKD')

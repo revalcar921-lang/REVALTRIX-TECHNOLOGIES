@@ -40,23 +40,22 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    void getTenantSetup()
+      .then((result) => { if (!cancelled) setReadiness(result); })
+      .catch((requestError: unknown) => {
+        if (!cancelled) setError(requestError instanceof Error ? requestError.message : 'Unable to load launch readiness.');
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     if (tab !== 'enquiries') return;
     let cancelled = false;
     void getWebsiteEnquiries()
       .then((items) => { if (!cancelled) setEnquiries(items); })
       .catch((requestError: unknown) => {
         if (!cancelled) setError(requestError instanceof Error ? requestError.message : 'Unable to load enquiries.');
-      });
-    return () => { cancelled = true; };
-  }, [tab]);
-
-  useEffect(() => {
-    if (tab !== 'launch') return;
-    let cancelled = false;
-    void getTenantSetup()
-      .then((result) => { if (!cancelled) setReadiness(result); })
-      .catch((requestError: unknown) => {
-        if (!cancelled) setError(requestError instanceof Error ? requestError.message : 'Unable to load launch readiness.');
       });
     return () => { cancelled = true; };
   }, [tab]);
@@ -88,8 +87,6 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
       }), 'Public services and branches saved.');
       return;
     }
-    const selectedBranchIds = form.getAll('branchIds').map(String);
-    const selectedServiceIds = form.getAll('serviceIds').map(String);
     const faqs = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[data-faq-row]'))
       .map((row) => ({
         question: row.querySelector<HTMLInputElement>('[name="faq-question"]')?.value.trim() ?? '',
@@ -109,13 +106,22 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
       contactPhone: String(form.get('contactPhone') ?? ''),
       contactEmail: String(form.get('contactEmail') ?? ''),
       whatsapp: String(form.get('whatsapp') ?? ''),
+      emergencyPhone: String(form.get('emergencyPhone') ?? ''),
+      emergencyMessage: String(form.get('emergencyMessage') ?? ''),
       facebookUrl: String(form.get('facebookUrl') ?? ''),
       instagramUrl: String(form.get('instagramUrl') ?? ''),
       linkedinUrl: String(form.get('linkedinUrl') ?? ''),
       seoTitle: String(form.get('seoTitle') ?? ''),
       seoDescription: String(form.get('seoDescription') ?? ''),
-      branchIds: selectedBranchIds,
-      serviceIds: selectedServiceIds,
+      openGraphTitle: String(form.get('openGraphTitle') ?? ''),
+      openGraphDescription: String(form.get('openGraphDescription') ?? ''),
+      canonicalUrl: String(form.get('canonicalUrl') ?? ''),
+      socialShareImageUrl: String(form.get('socialShareImageUrl') ?? ''),
+      faviconUrl: String(form.get('faviconUrl') ?? ''),
+      googleBusinessProfileUrl: String(form.get('googleBusinessProfileUrl') ?? ''),
+      keywords: String(form.get('keywords') ?? '').split(',').map((keyword) => keyword.trim()).filter(Boolean).slice(0, 20),
+      branchIds: data.website.draftContent.branchIds,
+      serviceIds: data.website.draftContent.serviceIds,
       faqs,
     }), 'Draft saved.');
   }
@@ -193,9 +199,12 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
               <label>Public phone<input name="contactPhone" maxLength={50} defaultValue={content.contactPhone || data.tenant.profile?.contactPhone || ''} /></label>
               <label>Public email<input name="contactEmail" type="email" maxLength={320} defaultValue={content.contactEmail || data.tenant.profile?.contactEmail || ''} /></label>
               <label>WhatsApp<input name="whatsapp" maxLength={50} defaultValue={content.whatsapp} placeholder="Optional contact number" /></label>
-                            <label>Facebook URL<input name="facebookUrl" type="url" maxLength={500} defaultValue={content.facebookUrl} placeholder="https://…" /></label>
-                            <label>Instagram URL<input name="instagramUrl" type="url" maxLength={500} defaultValue={content.instagramUrl} placeholder="https://…" /></label>
-                            <label>LinkedIn URL<input name="linkedinUrl" type="url" maxLength={500} defaultValue={content.linkedinUrl} placeholder="https://…" /></label>
+              <label>Emergency phone<input name="emergencyPhone" maxLength={50} defaultValue={content.emergencyPhone} /></label>
+              <label>Emergency message<input name="emergencyMessage" maxLength={300} defaultValue={content.emergencyMessage} /></label>
+              <label>Facebook URL<input name="facebookUrl" type="url" maxLength={500} defaultValue={content.facebookUrl} placeholder="https://…" /></label>
+              <label>Instagram URL<input name="instagramUrl" type="url" maxLength={500} defaultValue={content.instagramUrl} placeholder="https://…" /></label>
+              <label>LinkedIn URL<input name="linkedinUrl" type="url" maxLength={500} defaultValue={content.linkedinUrl} placeholder="https://…" /></label>
+              <label className="wide">Google Business Profile URL<input name="googleBusinessProfileUrl" type="url" maxLength={1000} defaultValue={content.googleBusinessProfileUrl} placeholder="https://…" /></label>
               <label>Tagline<input name="tagline" maxLength={180} defaultValue={content.tagline} /></label>
             </div>
           </section>
@@ -218,6 +227,12 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
             <div className="website-editor-fields">
               <label>SEO title<input name="seoTitle" maxLength={200} defaultValue={content.seoTitle || data.tenant.name} /></label>
               <label>SEO description<textarea name="seoDescription" maxLength={320} rows={2} defaultValue={content.seoDescription} /></label>
+              <label>Social sharing title<input name="openGraphTitle" maxLength={200} defaultValue={content.openGraphTitle || content.seoTitle || data.tenant.name} /></label>
+              <label>Social sharing description<textarea name="openGraphDescription" maxLength={320} rows={2} defaultValue={content.openGraphDescription || content.seoDescription} /></label>
+              <label>Canonical URL<input name="canonicalUrl" type="url" maxLength={1000} defaultValue={content.canonicalUrl} placeholder="https://…" /></label>
+              <label>Social sharing image URL<input name="socialShareImageUrl" type="url" maxLength={1000} defaultValue={content.socialShareImageUrl} placeholder="https://…" /></label>
+              <label>Favicon URL<input name="faviconUrl" type="url" maxLength={1000} defaultValue={content.faviconUrl} placeholder="https://…" /></label>
+              <label>Search keywords<input name="keywords" maxLength={1200} defaultValue={content.keywords.join(', ')} placeholder="clinic, family care, ..." /></label>
             </div>
           </section>
 

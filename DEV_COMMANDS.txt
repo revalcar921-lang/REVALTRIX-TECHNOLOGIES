@@ -5,3 +5,5 @@ cd /workspaces/REVALTRIX-TECHNOLOGIES && pnpm --filter @revaltrix/web dev --host
 cd /workspaces/REVALTRIX-TECHNOLOGIES && pnpm --filter @revaltrix/api dev
 
 pnpm --filter ./packages/database exec prisma db push && pnpm --filter ./packages/database exec prisma generate
+
+pnpm --dir packages/database exec prisma db push && pnpm --dir packages/database exec prisma generate && pnpm --dir apps/api build

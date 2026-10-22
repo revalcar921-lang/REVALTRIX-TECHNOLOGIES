@@ -21,6 +21,7 @@ import { DepartmentWorkspacePage } from './features/staff/pages/DepartmentWorksp
 import { StaffPasswordResetPage } from './features/staff/pages/StaffPasswordResetPage.js';
 import { getMyStaffProfile } from './features/staff/api/staff.api.js';
 import { TenantPublicWebsitePage } from './features/tenant-websites/pages/TenantPublicWebsitePage.js';
+import { LegalInfoPage } from './features/legal/LegalInfoPage.js';
 import './styles.css';
 
 type Route =
@@ -38,6 +39,7 @@ type Route =
   | { name: 'staff-password-reset' }
   | { name: 'staff-department'; departmentId?: string }
   | { name: 'public-website'; slug: string; preview: boolean }
+  | { name: 'legal-info'; document: 'terms' | 'privacy' }
   | { name: 'login' };
 
 function getRoute(): Route {
@@ -51,6 +53,9 @@ function getRoute(): Route {
       preview: new URLSearchParams(window.location.search).get('preview') === '1',
     };
   }
+
+  if (path === '/terms') return { name: 'legal-info', document: 'terms' };
+  if (path === '/privacy') return { name: 'legal-info', document: 'privacy' };
 
   if (path === '/register/patient') {
     return { name: 'patient-registration' };
@@ -286,7 +291,7 @@ function App() {
     setCheckingSession(true);
     setAccountResolutionError(null);
     const returnTo = window.sessionStorage.getItem('revaltrix_site_booking_return_to');
-    if (returnTo?.startsWith('/sites/')) {
+    if (returnTo?.startsWith('/sites/') || returnTo === '/patient/appointments') {
       window.sessionStorage.removeItem('revaltrix_site_booking_return_to');
       navigate(returnTo);
       setCheckingSession(false);
@@ -354,6 +359,10 @@ function App() {
 
   if (route.name === 'public-website') {
     return <TenantPublicWebsitePage slug={route.slug} preview={route.preview} onNavigate={navigate} />;
+  }
+
+  if (route.name === 'legal-info') {
+    return <LegalInfoPage document={route.document} onNavigate={navigate} />;
   }
 
   if (route.name === 'patient-profile') {

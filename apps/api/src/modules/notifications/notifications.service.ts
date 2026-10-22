@@ -284,36 +284,56 @@ export class NotificationsService {
     channels?: NotificationChannel[];
     idempotencyPrefix?: string;
   }) {
+    return this.database.client.$transaction((tx) => this.createNotificationInTransaction(tx, params));
+  }
+
+  async createNotificationInTransaction(
+    tx: Prisma.TransactionClient,
+    params: {
+      tenantId?: string | null;
+      recipientUserId: string;
+      type: string;
+      title: string;
+      body: string;
+      data?: Record<string, unknown>;
+      channels?: NotificationChannel[];
+      idempotencyPrefix?: string;
+    },
+  ) {
     const channels =
       params.channels?.length
         ? [...new Set(params.channels)]
         : [NotificationChannel.IN_APP];
-
-    return this.database.client.$transaction(
-      async (tx) => {
-        const notification = await tx.notification.create({
-          data: {
-            tenantId: params.tenantId ?? null,
-            recipientUserId: params.recipientUserId,
-            type: params.type,
-            title: params.title,
-            body: params.body,
-            ...(params.data !== undefined ? { data: params.data as Prisma.InputJsonValue } : {}),
-          },
-        });
-
-        await tx.notificationDelivery.createMany({
-          data: channels.map((channel) => ({
-            notificationId: notification.id,
-            channel,
-            status: NotificationDeliveryStatus.PENDING,
-            idempotencyKey:
-              `${params.idempotencyPrefix ?? notification.id}:${notification.id}:${channel}`,
-          })),
-        });
-
-        return notification;
+    if (params.idempotencyPrefix) {
+      const existing = await tx.notification.findFirst({
+        where: {
+          idempotencyKey: `${params.idempotencyPrefix}:${params.recipientUserId}:${params.type}`,
+        },
+        select: { id: true },
+      });
+      if (existing) return existing;
+    }
+    const notification = await tx.notification.create({
+      data: {
+        tenantId: params.tenantId ?? null,
+        recipientUserId: params.recipientUserId,
+          ...(params.idempotencyPrefix ? { idempotencyKey: `${params.idempotencyPrefix}:${params.recipientUserId}:${params.type}` } : {}),
+        type: params.type,
+        title: params.title,
+        body: params.body,
+        ...(params.data !== undefined
+          ? { data: { ...params.data, ...(params.idempotencyPrefix ? { eventKey: params.idempotencyPrefix } : {}) } as Prisma.InputJsonValue }
+          : params.idempotencyPrefix ? { data: { eventKey: params.idempotencyPrefix } } : {}),
       },
-    );
+    });
+    await tx.notificationDelivery.createMany({
+      data: channels.map((channel) => ({
+        notificationId: notification.id,
+        channel,
+        status: NotificationDeliveryStatus.PENDING,
+        idempotencyKey: `${params.idempotencyPrefix ?? notification.id}:${notification.id}:${channel}`,
+      })),
+    });
+    return notification;
   }
 }

@@ -190,6 +190,7 @@
 
 .website-editor-fields input:not([type='color']),
 .website-editor-fields textarea,
+.website-editor-fields select,
 .website-editor-faq input,
 .website-editor-faq textarea {
   width: 100%;
@@ -207,6 +208,10 @@
 .website-editor-fields input:disabled {
   background: #f3f6f4;
   color: #6b7772;
+}
+
+.website-editor-fields select {
+  min-height: 39px;
 }
 
 .website-editor-fields input[type='color'] {

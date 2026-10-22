@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -28,6 +29,8 @@ export class BranchesService {
         town: true,
         county: true,
         postalCode: true,
+        latitude: true,
+        longitude: true,
         contactPhone: true,
         contactEmail: true,
         openingTime: true,
@@ -81,6 +84,8 @@ export class BranchesService {
         town: true,
         county: true,
         postalCode: true,
+        latitude: true,
+        longitude: true,
         contactPhone: true,
         contactEmail: true,
         openingTime: true,
@@ -132,6 +137,10 @@ export class BranchesService {
   async create(userId: string, dto: CreateBranchDto) {
     const tenantId = await this.getTenantIdForUser(userId);
 
+    if ((dto.latitude === undefined) !== (dto.longitude === undefined)) {
+      throw new BadRequestException('Enter both branch coordinates or leave both blank.');
+    }
+
     const name = dto.name.trim();
     const code = dto.code.trim().toUpperCase();
 
@@ -150,6 +159,8 @@ export class BranchesService {
         town: dto.town?.trim() || null,
         county: dto.county?.trim() || null,
         postalCode: dto.postalCode?.trim() || null,
+        latitude: dto.latitude ?? null,
+        longitude: dto.longitude ?? null,
         contactPhone: dto.contactPhone?.trim() || null,
         contactEmail: dto.contactEmail?.trim().toLowerCase() || null,
         openingTime: dto.openingTime ?? null,
@@ -165,6 +176,8 @@ export class BranchesService {
         town: true,
         county: true,
         postalCode: true,
+        latitude: true,
+        longitude: true,
         contactPhone: true,
         contactEmail: true,
         openingTime: true,
@@ -195,6 +208,8 @@ export class BranchesService {
       select: {
         id: true,
         code: true,
+        latitude: true,
+        longitude: true,
       },
     });
 
@@ -209,6 +224,8 @@ export class BranchesService {
       town?: string | null;
       county?: string | null;
       postalCode?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
       contactPhone?: string | null;
       contactEmail?: string | null;
       openingTime?: string | null;
@@ -242,6 +259,14 @@ export class BranchesService {
     }
     if (dto.postalCode !== undefined) {
       data.postalCode = dto.postalCode?.trim() || null;
+    }
+    if (dto.latitude !== undefined) data.latitude = dto.latitude;
+    if (dto.longitude !== undefined) data.longitude = dto.longitude;
+
+    const nextLatitude = dto.latitude === undefined ? existing.latitude : dto.latitude;
+    const nextLongitude = dto.longitude === undefined ? existing.longitude : dto.longitude;
+    if ((nextLatitude === null) !== (nextLongitude === null)) {
+      throw new BadRequestException('Enter both branch coordinates or clear both.');
     }
     if (dto.contactPhone !== undefined) {
       data.contactPhone = dto.contactPhone?.trim() || null;
@@ -285,6 +310,8 @@ export class BranchesService {
         town: true,
         county: true,
         postalCode: true,
+        latitude: true,
+        longitude: true,
         contactPhone: true,
         contactEmail: true,
         openingTime: true,

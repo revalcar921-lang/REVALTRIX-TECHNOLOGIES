@@ -21,6 +21,8 @@ interface BranchFormState {
   town: string;
   county: string;
   postalCode: string;
+  latitude: string;
+  longitude: string;
   contactPhone: string;
   contactEmail: string;
   openingTime: string;
@@ -35,6 +37,8 @@ const emptyForm: BranchFormState = {
   town: '',
   county: '',
   postalCode: '',
+  latitude: '',
+  longitude: '',
   contactPhone: '',
   contactEmail: '',
   openingTime: '',
@@ -93,6 +97,8 @@ export function BranchesPage({
       town: branch.town ?? '',
       county: branch.county ?? '',
       postalCode: branch.postalCode ?? '',
+      latitude: branch.latitude == null ? '' : String(branch.latitude),
+      longitude: branch.longitude == null ? '' : String(branch.longitude),
       contactPhone: branch.contactPhone ?? '',
       contactEmail: branch.contactEmail ?? '',
       openingTime: branch.openingTime ?? '',
@@ -140,6 +146,14 @@ export function BranchesPage({
       );
       return;
     }
+    const latitude = form.latitude.trim() ? Number(form.latitude) : undefined;
+    const longitude = form.longitude.trim() ? Number(form.longitude) : undefined;
+    if ((latitude === undefined) !== (longitude === undefined) ||
+      (latitude !== undefined && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)) ||
+      (longitude !== undefined && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180))) {
+      setError('Enter both valid coordinates, or leave both blank.');
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -154,6 +168,8 @@ export function BranchesPage({
           town: form.town.trim() || null,
           county: form.county.trim() || null,
           postalCode: form.postalCode.trim() || null,
+          latitude: latitude ?? null,
+          longitude: longitude ?? null,
           contactPhone: form.contactPhone.trim() || null,
           contactEmail: form.contactEmail.trim() || null,
           openingTime: form.openingTime || null,
@@ -172,6 +188,7 @@ export function BranchesPage({
           town: form.town.trim() || undefined,
           county: form.county.trim() || undefined,
           postalCode: form.postalCode.trim() || undefined,
+          ...(latitude !== undefined && longitude !== undefined ? { latitude, longitude } : {}),
           contactPhone: form.contactPhone.trim() || undefined,
           contactEmail: form.contactEmail.trim() || undefined,
           openingTime: form.openingTime || undefined,
@@ -354,6 +371,14 @@ export function BranchesPage({
               <label>
                 <span>Postal code</span>
                 <input value={form.postalCode} onChange={(event) => updateField('postalCode', event.target.value)} maxLength={30} placeholder="00100" />
+              </label>
+              <label>
+                <span>Branch latitude</span>
+                <input type="number" step="0.000001" min="-90" max="90" value={form.latitude} onChange={(event) => updateField('latitude', event.target.value)} placeholder="-1.286389" />
+              </label>
+              <label>
+                <span>Branch longitude</span>
+                <input type="number" step="0.000001" min="-180" max="180" value={form.longitude} onChange={(event) => updateField('longitude', event.target.value)} placeholder="36.817223" />
               </label>
               <label>
                 <span>Contact phone</span>

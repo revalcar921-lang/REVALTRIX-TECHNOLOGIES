@@ -139,6 +139,19 @@
   color: #8d3929;
 }
 
+.tenant-setup-config-legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 0;
+}
+
+.tenant-setup-config-legal-links a {
+  color: #276b52;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .tenant-setup-resource-list {
   display: grid;
   border-top: 1px solid #e4ebe7;

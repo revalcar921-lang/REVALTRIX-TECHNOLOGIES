@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import {
   createAppointment,
   getAppointments,
+  reviewAppointmentRefund,
   transitionAppointment,
 } from '../api/appointments.api.js';
 import type {
@@ -179,11 +180,13 @@ export function AppointmentsPage({
     status: AppointmentStatus,
   ) {
     let reasonText: string | undefined;
-    if (status === 'CANCELLED' || status === 'REJECTED') {
+    if (status === 'CANCELLED' || status === 'REJECTED' || status === 'NO_SHOW') {
       const entered = window.prompt(
         status === 'CANCELLED'
           ? 'Reason for cancellation:'
-          : 'Reason for rejection:',
+          : status === 'NO_SHOW'
+            ? 'Reason for suspected no-show (the patient can dispute this):'
+            : 'Reason for rejection:',
       );
       if (entered === null) return;
       if (entered.trim().length < 3) {
@@ -208,6 +211,40 @@ export function AppointmentsPage({
           ? actionError.message
           : 'Unable to update appointment.',
       );
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  async function reviewRefund(appointment: Appointment, refundId: string, status: 'PENDING' | 'REFUNDED' | 'FAILED' | 'DISPUTED' | 'NOT_ELIGIBLE') {
+    const reason = window.prompt(`Reason for marking refund ${status.toLowerCase().replaceAll('_', ' ')}:`);
+    if (!reason?.trim() || reason.trim().length < 3) {
+      setError('A refund review reason of at least 3 characters is required.');
+      return;
+    }
+    const evidenceRef = status === 'REFUNDED' ? window.prompt('Evidence reference for the completed refund (required):')?.trim() : undefined;
+    const methodInput = status === 'REFUNDED' ? window.prompt('Refund method: CASH, MPESA, BANK_TRANSFER, or OTHER')?.trim().toUpperCase() : undefined;
+    const refundMethod = ['CASH', 'MPESA', 'BANK_TRANSFER', 'OTHER'].includes(methodInput ?? '') ? methodInput as 'CASH' | 'MPESA' | 'BANK_TRANSFER' | 'OTHER' : undefined;
+    const providerReference = status === 'REFUNDED' && refundMethod && refundMethod !== 'CASH' ? window.prompt('Electronic refund transaction reference (required):')?.trim() : undefined;
+    if (status === 'REFUNDED' && (!evidenceRef || !refundMethod || (refundMethod !== 'CASH' && !providerReference))) {
+      setError('Refund evidence and method are required; electronic refunds need a transaction reference.');
+      return;
+    }
+    setActingId(appointment.id);
+    setError(null);
+    setSuccess(null);
+    try {
+      await reviewAppointmentRefund(appointment.id, refundId, {
+        status,
+        reason: reason.trim(),
+        ...(evidenceRef ? { evidenceRef } : {}),
+        ...(providerReference ? { providerReference } : {}),
+        ...(refundMethod ? { refundMethod } : {}),
+      });
+      setSuccess(`Refund for appointment ${appointment.appointmentNumber} updated.`);
+      await loadData();
+    } catch (reviewError) {
+      setError(reviewError instanceof Error ? reviewError.message : 'Unable to update refund.');
     } finally {
       setActingId(null);
     }
@@ -329,6 +366,7 @@ export function AppointmentsPage({
                 <h3>
                   {appointment.appointmentNumber} · {appointment.status.replaceAll('_', ' ')}
                 </h3>
+                {appointment.bookingSource === 'PATIENT_PORTAL' ? <p className="appointment-online-badge">Online booking</p> : null}
                 <p>
                   Patient number: {appointment.patientTenantRecord.patientNumber}
                 </p>
@@ -340,6 +378,25 @@ export function AppointmentsPage({
                   Department: {appointment.department?.name ?? '—'} · Service:{' '}
                   {appointment.service?.name ?? '—'}
                 </p>
+                {appointment.paymentIntents?.[0] ? (
+                  <p className="appointment-payment-summary">
+                    Deposit: {appointment.paymentIntents[0].currency} {appointment.paymentIntents[0].amount} · {appointment.paymentIntents[0].status.replaceAll('_', ' ')}
+                    {appointment.paymentIntents[0].providerReceipt ? ` · M-Pesa receipt ${appointment.paymentIntents[0].providerReceipt}` : ''}
+                  </p>
+                ) : null}
+                {appointment.refunds?.map((refund) => (
+                  <div className="appointment-refund-summary" key={refund.id}>
+                    <p>Refund: {refund.status.replaceAll('_', ' ')} · {refund.currency} {refund.amount}{refund.refundMethod ? ` · ${refund.refundMethod.replaceAll('_', ' ')}` : ''} · {refund.reason}</p>
+                    {refund.providerReference ? <p>Provider reference: {refund.providerReference}</p> : null}
+                    {['REQUESTED', 'DISPUTED', 'ELIGIBLE', 'PENDING'].includes(refund.status) ? (
+                      <div className="appointment-refund-actions">
+                        <button type="button" disabled={actingId === appointment.id} onClick={() => void reviewRefund(appointment, refund.id, 'PENDING')}>Mark processing</button>
+                        <button type="button" disabled={actingId === appointment.id} onClick={() => void reviewRefund(appointment, refund.id, 'REFUNDED')}>Record refund</button>
+                        <button type="button" disabled={actingId === appointment.id} onClick={() => void reviewRefund(appointment, refund.id, 'DISPUTED')}>Escalate dispute</button>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
                 {appointment.reason && <p>Reason: {appointment.reason}</p>}
                 <div>
                   {(actions[appointment.status] ?? []).map((action) => (

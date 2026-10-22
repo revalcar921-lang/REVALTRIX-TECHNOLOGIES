@@ -25,6 +25,16 @@ import type {
   UploadTenantDocumentDto,
 } from './dto/tenant-setup-config.dto.js';
 
+const DEFAULT_PLATFORM_TERMS_VERSION = '2026-10-21';
+
+function getPlatformTermsConfiguration() {
+  return {
+    version: process.env.REVALTRIX_TERMS_VERSION?.trim() || DEFAULT_PLATFORM_TERMS_VERSION,
+    termsUrl: process.env.REVALTRIX_TERMS_URL?.trim() || '/terms',
+    privacyUrl: process.env.REVALTRIX_PRIVACY_URL?.trim() || '/privacy',
+  };
+}
+
 export interface ReadinessRequirement {
   key: string;
   label: string;
@@ -90,6 +100,7 @@ export class TenantSetupService {
         orderBy: { createdAt: 'desc' },
       }),
     ]);
+    const platformTerms = getPlatformTermsConfiguration();
     return {
       bookingPolicy,
       paymentConfig,
@@ -97,8 +108,9 @@ export class TenantSetupService {
       compliance,
       latestTestRun,
       documents,
-      currentTermsVersion: process.env.REVALTRIX_TERMS_VERSION ?? null,
-      termsUrl: process.env.REVALTRIX_TERMS_URL ?? null,
+      currentTermsVersion: platformTerms.version,
+      termsUrl: platformTerms.termsUrl,
+      privacyUrl: platformTerms.privacyUrl,
     };
   }
 
@@ -214,11 +226,7 @@ export class TenantSetupService {
 
   async acceptTerms(userId: string, dto: AcceptTenantTermsDto, ipAddress?: string) {
     if (!dto.accepted) throw new ConflictException('Terms must be explicitly accepted.');
-    const currentTermsVersion = process.env.REVALTRIX_TERMS_VERSION?.trim();
-    const termsUrl = process.env.REVALTRIX_TERMS_URL?.trim();
-    if (!currentTermsVersion || !termsUrl) {
-      throw new ConflictException('The platform has not configured a current terms version and policy URL.');
-    }
+    const currentTermsVersion = getPlatformTermsConfiguration().version;
     if (dto.version.trim() !== currentTermsVersion) {
       throw new ConflictException('Accept the current platform terms version.');
     }
@@ -308,7 +316,6 @@ export class TenantSetupService {
       serviceCount,
       configuredServiceCount,
       activeServices,
-      providerCount,
       administratorCount,
       branchCount,
       configuredBranchCount,
@@ -336,13 +343,6 @@ export class TenantSetupService {
         this.database.client.service.findMany({
           where: { tenantId: membership.tenantId, status: 'ACTIVE', deletedAt: null },
           select: { price: true, durationMin: true },
-        }),
-        this.database.client.providerProfile.count({
-          where: {
-            tenantId: membership.tenantId,
-            status: 'ACTIVE',
-            deletedAt: null,
-          },
         }),
         this.database.client.membership.count({
           where: {
@@ -529,7 +529,6 @@ export class TenantSetupService {
       serviceCount,
       configuredServiceCount,
       activeServices,
-      providerCount,
       administratorCount,
       branchCount,
       configuredBranchCount,
@@ -672,7 +671,6 @@ export class TenantSetupService {
     serviceCount: number,
     configuredServiceCount: number,
     activeServices: Array<{ price: Prisma.Decimal; durationMin: number | null }>,
-    providerCount: number,
     administratorCount: number,
     branchCount: number,
     configuredBranchCount: number,
@@ -701,12 +699,12 @@ export class TenantSetupService {
     compliance: Pick<OrganizationCompliance, 'ownerIdentityStatus' | 'termsVersion' | 'termsAcceptedAt' | 'termsAcceptedByUserId'> | null,
     latestTestRun: ReadinessTestRun | null,
   ) {
+    const currentTermsVersion = getPlatformTermsConfiguration().version;
     const requirements = this.buildRequirements(
       tenant,
       serviceCount,
       configuredServiceCount,
       activeServices,
-      providerCount,
       administratorCount,
       branchCount,
       configuredBranchCount,
@@ -721,6 +719,7 @@ export class TenantSetupService {
       resourceCount,
       compliance,
       latestTestRun,
+      currentTermsVersion,
     );
 
     const completedCount = requirements.filter((requirement) => requirement.complete).length;
@@ -836,7 +835,6 @@ export class TenantSetupService {
     serviceCount: number,
     configuredServiceCount: number,
     activeServices: Array<{ price: Prisma.Decimal; durationMin: number | null }>,
-    providerCount: number,
     administratorCount: number,
     branchCount: number,
     configuredBranchCount: number,
@@ -864,6 +862,7 @@ export class TenantSetupService {
     resourceCount: number,
     compliance: Pick<OrganizationCompliance, 'ownerIdentityStatus' | 'termsVersion' | 'termsAcceptedAt' | 'termsAcceptedByUserId'> | null,
     latestTestRun: ReadinessTestRun | null,
+    currentTermsVersion: string,
   ): ReadinessRequirement[] {
     const profile = tenant.profile;
 
@@ -1008,7 +1007,7 @@ export class TenantSetupService {
       {
         key: 'departments',
         label: 'Departments',
-        weight: 10,
+        weight: 15,
         required: this.requiresDepartments(tenant.type),
         available: true,
         complete: activeDepartmentCount > 0,
@@ -1030,16 +1029,8 @@ export class TenantSetupService {
         complete: configuredServiceCount > 0,
       },
       {
-        key: 'providers',
-        label: 'Providers',
-        weight: 5,
-        required: this.requiresProviders(tenant.type),
-        available: true,
-        complete: providerCount > 0,
-      },
-      {
         key: 'provider_calendar',
-        label: 'Provider availability configured',
+        label: 'Appointment team availability configured',
         weight: 8,
         required: this.requiresProviders(tenant.type),
         available: true,
@@ -1047,7 +1038,7 @@ export class TenantSetupService {
       },
       {
         key: 'service_provider_link',
-        label: 'Active service linked to provider and branch',
+        label: 'Appointment services linked to a team and branch',
         weight: 6,
         required: this.requiresProviders(tenant.type),
         available: true,
@@ -1092,8 +1083,7 @@ export class TenantSetupService {
         complete: Boolean(
           compliance?.termsAcceptedAt &&
           compliance.termsAcceptedByUserId &&
-          process.env.REVALTRIX_TERMS_VERSION &&
-          compliance.termsVersion === process.env.REVALTRIX_TERMS_VERSION,
+          compliance.termsVersion === currentTermsVersion,
         ),
       },
       {
@@ -1121,13 +1111,12 @@ export class TenantSetupService {
       departments: 'Create at least one active department for this organization type.',
       services: 'Create at least one active service.',
       service_pricing: 'At least one active service must have a price greater than zero and a configured duration.',
-      providers: 'Create at least one active provider profile for this organization.',
-      provider_calendar: 'Provider schedule records are not configured through a tenant-facing calendar setup screen.',
-      service_provider_link: 'Link an active provider, service, and branch in provider availability; this relationship has no tenant setup screen yet.',
+      provider_calendar: 'Configure at least one active team schedule so the system can assign a suitable team member when a patient books.',
+      service_provider_link: 'Link appointment services and branches to an active team schedule so department bookings can be assigned.',
       resources: 'Add at least one active room, equipment item, bed, vehicle, or other resource.',
       booking_rules: 'Configure the booking lead time, cancellation/reschedule windows, and daily limit.',
       payments: 'Select at least one accepted payment preference and provide its required details.',
-      terms_accepted: process.env.REVALTRIX_TERMS_VERSION ? 'Review and accept the current Revaltrix terms.' : 'Current terms version is not configured by the platform.',
+      terms_accepted: 'Review and accept the current Revaltrix Terms and Privacy Policy.',
       test_booking: 'Run real booking, reschedule, cancellation, and reminder tests; no automated test runner is configured.',
     };
 
@@ -1191,13 +1180,12 @@ export class TenantSetupService {
         ['service.durationMin', service.durationMin && service.durationMin > 0 ? 'configured' : null],
         ['service.currency', paymentConfig?.currency],
       ])),
-      providers: !this.requiresProviders(tenant.type) || providerCount > 0 ? [] : ['activeProvider'],
       provider_calendar: !this.requiresProviders(tenant.type) || availabilityCount > 0 ? [] : ['providerAvailability'],
       service_provider_link: !this.requiresProviders(tenant.type) || serviceProviderLinkCount > 0 ? [] : ['providerId', 'serviceId', 'branchId'],
       resources: !this.requiresResources(tenant.type) || resourceCount > 0 ? [] : ['activeResource'],
       booking_rules: bookingPolicy ? [] : ['minLeadTimeMinutes', 'cancellationWindowHours', 'rescheduleWindowHours', 'maxBookingsPerDay'],
       payments: paymentConfig && (paymentConfig.acceptCash || (paymentConfig.acceptMpesa && paymentConfig.mpesaPaybill) || paymentConfig.acceptCard || (paymentConfig.acceptBankTransfer && paymentConfig.bankAccountName && paymentConfig.bankAccountNumber)) ? [] : ['enabledPaymentMethod'],
-      terms_accepted: compliance?.termsAcceptedAt && compliance.termsAcceptedByUserId && process.env.REVALTRIX_TERMS_VERSION && compliance.termsVersion === process.env.REVALTRIX_TERMS_VERSION ? [] : ['termsVersion', 'acceptedBy', 'acceptedAt'],
+      terms_accepted: compliance?.termsAcceptedAt && compliance.termsAcceptedByUserId && compliance.termsVersion === currentTermsVersion ? [] : ['termsVersion', 'acceptedBy', 'acceptedAt'],
       test_booking: latestTestRun?.bookingStatus === 'PASSED' && latestTestRun.rescheduleStatus === 'PASSED' && latestTestRun.cancellationStatus === 'PASSED' && latestTestRun.reminderStatus === 'PASSED' ? [] : ['bookingTest', 'rescheduleTest', 'cancellationTest', 'reminderTest'],
     };
     const routes: Record<string, string> = {
@@ -1232,7 +1220,6 @@ export class TenantSetupService {
       departments: 1,
       services: 1,
       service_pricing: Math.max(1, activeServices.length * 3),
-      providers: 1,
       provider_calendar: 1,
       service_provider_link: 3,
       resources: 1,

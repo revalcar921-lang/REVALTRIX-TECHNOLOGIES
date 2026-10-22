@@ -13,6 +13,7 @@ export interface Appointment {
   id: string;
   appointmentNumber: string;
   status: AppointmentStatus;
+  bookingSource?: 'PATIENT_PORTAL' | 'STAFF' | 'PHONE' | 'WALK_IN' | 'INTEGRATION';
   startAt: string;
   endAt: string;
   timeZone: string;
@@ -32,6 +33,26 @@ export interface Appointment {
   branch?: { id: string; name: string } | null;
   department?: { id: string; name: string } | null;
   service?: { id: string; name: string; code: string } | null;
+  paymentIntents?: Array<{
+    id?: string;
+    internalReference?: string;
+    status: 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'EXPIRED' | 'RECONCILIATION_REQUIRED';
+    amount: string;
+    currency: string;
+    providerReceipt: string | null;
+    paidAt: string | null;
+  }>;
+  refunds?: Array<{
+    id: string;
+    status: 'ELIGIBLE' | 'REQUESTED' | 'PENDING' | 'REFUNDED' | 'FAILED' | 'DISPUTED' | 'NOT_ELIGIBLE';
+    amount: string;
+    currency: string;
+    refundMethod: 'CASH' | 'MPESA' | 'BANK_TRANSFER' | 'OTHER' | null;
+    reason: string;
+    evidenceRef: string | null;
+    providerReference: string | null;
+    createdAt: string;
+  }>;
 }
 
 export interface CreateAppointmentInput {
@@ -60,7 +81,20 @@ export interface AppointmentFacility {
     description: string | null;
     contactPhone: string | null;
   } | null;
-  branches: Array<{ id: string; name: string }>;
+  branches: Array<{
+    id: string;
+    name: string;
+    address: string | null;
+    town: string | null;
+    county: string | null;
+    postalCode: string | null;
+    latitude: number | string | null;
+    longitude: number | string | null;
+    contactPhone: string | null;
+    openingTime: string | null;
+    closingTime: string | null;
+    operatingDays: string[];
+  }>;
   departments: Array<{ id: string; name: string; branchId: string | null }>;
   services: Array<{
     id: string;
@@ -71,6 +105,15 @@ export interface AppointmentFacility {
     durationMin: number | null;
     branchId: string | null;
     departmentId: string | null;
+  }>;
+  providers: Array<{
+    id: string;
+    professionalTitle: string | null;
+    specialty: string | null;
+    user: { displayName: string };
+    eligibleServiceIds: string[];
+    branchIds: Array<string | null>;
+    departmentIds: Array<string | null>;
   }>;
 }
 
@@ -98,4 +141,12 @@ export interface CreatePatientAppointmentInput {
   timeZone: string;
   reason?: string;
   patientNotes?: string;
+}
+
+export interface PatientBookingEligibility {
+  canBook: boolean;
+  identityVerified: boolean;
+  patientProfileExists: boolean;
+  facilityRegistrationStatus: string | null;
+  reason: string | null;
 }

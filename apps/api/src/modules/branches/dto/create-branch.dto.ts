@@ -5,6 +5,9 @@ import {
   Matches,
   IsString,
   IsUUID,
+  IsNumber,
+  Max,
+  Min,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -39,6 +42,18 @@ export class CreateBranchDto {
   @IsString()
   @MaxLength(30)
   postalCode?: string;
+
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(-90)
+  @Max(90)
+  latitude?: number;
+
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(-180)
+  @Max(180)
+  longitude?: number;
 
   @IsOptional()
   @IsString()

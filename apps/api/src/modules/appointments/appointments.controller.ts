@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
   Req,
@@ -13,10 +14,12 @@ import { AccessTokenGuard } from '../core/authentication/guards/access-token.gua
 import { PermissionGuard } from '../authorization/guards/permission.guard.js';
 import { RequirePermission } from '../authorization/decorators/require-permission.decorator.js';
 import { AppointmentStatus } from '@prisma/client';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { CreateAppointmentDto } from './dto/create-appointment.dto.js';
 import { AppointmentQueryDto } from './dto/appointment-query.dto.js';
 import { AppointmentSlotsQueryDto } from './dto/appointment-slots-query.dto.js';
 import { TransitionAppointmentDto } from './dto/transition-appointment.dto.js';
+import { RequestAppointmentRefundDto, ReviewAppointmentRefundDto } from './dto/appointment-refund.dto.js';
 import { AppointmentsService } from './appointments.service.js';
 
 @Controller('v1/appointments')
@@ -47,6 +50,25 @@ export class AppointmentsController {
   @Get('discovery/slots')
   discoverSlots(@Query() query: AppointmentSlotsQueryDto) {
     return this.appointmentsService.discoverSlots(query);
+  }
+
+  @Get('my/booking-eligibility')
+  bookingEligibility(
+    @Req() request: AuthenticatedRequest,
+    @Query('tenantId') tenantId: string,
+  ) {
+    return this.appointmentsService.getPatientBookingEligibility(request.auth.userId, tenantId);
+  }
+
+  @Post('my/:appointmentId/refund-request')
+  @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 3 } })
+  requestRefund(
+    @Req() request: AuthenticatedRequest,
+    @Param('appointmentId', new ParseUUIDPipe()) appointmentId: string,
+    @Body() dto: RequestAppointmentRefundDto,
+  ) {
+    return this.appointmentsService.requestPatientRefund(request.auth.userId, appointmentId, dto);
   }
 
   @Get(':appointmentId')
@@ -182,5 +204,17 @@ export class AppointmentsController {
       AppointmentStatus.REJECTED,
       dto,
     );
+  }
+
+  @Post(':appointmentId/refunds/:refundId/review')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('appointments', 'update')
+  reviewRefund(
+    @Req() request: AuthenticatedRequest,
+    @Param('appointmentId', new ParseUUIDPipe()) appointmentId: string,
+    @Param('refundId', new ParseUUIDPipe()) refundId: string,
+    @Body() dto: ReviewAppointmentRefundDto,
+  ) {
+    return this.appointmentsService.reviewAppointmentRefund(request.auth.userId, appointmentId, refundId, dto);
   }
 }

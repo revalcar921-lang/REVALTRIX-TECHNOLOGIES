@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import {
   AppointmentBookingSource,
   AppointmentStatus,
+  NotificationChannel,
   Prisma,
   RecordStatus,
 } from '@prisma/client';
@@ -18,7 +20,10 @@ import { CreatePatientAppointmentDto } from './dto/create-patient-appointment.dt
 import { AppointmentQueryDto } from './dto/appointment-query.dto.js';
 import { AppointmentSlotsQueryDto } from './dto/appointment-slots-query.dto.js';
 import { TransitionAppointmentDto } from './dto/transition-appointment.dto.js';
+import type { RequestAppointmentRefundDto, ReviewAppointmentRefundDto } from './dto/appointment-refund.dto.js';
 import { EncountersService } from '../encounters/encounters.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
+import { parseTenantWebsiteContent } from '../tenant-websites/tenant-website.utils.js';
 
 const TERMINAL_STATUSES: AppointmentStatus[] = [
   AppointmentStatus.COMPLETED,
@@ -59,14 +64,103 @@ export class AppointmentsService {
     private readonly database: DatabaseService,
     private readonly authorization: AuthorizationService,
     private readonly encounters: EncountersService,
+    private readonly notifications: NotificationsService,
   ) {}
 
-  async discoverFacilities() {
-    return this.database.client.tenant.findMany({
+  private async notifyAppointmentParticipants(
+    tx: Prisma.TransactionClient,
+    input: {
+      tenantId: string;
+      patientUserId: string;
+      appointmentId: string;
+      appointmentNumber: string;
+      status: AppointmentStatus;
+      eventKey: string;
+      branchId: string | null;
+      departmentId: string | null;
+      tenantName: string;
+    },
+  ) {
+    const memberships = await tx.membership.findMany({
+      where: {
+        tenantId: input.tenantId,
+        status: 'ACTIVE',
+        startsAt: { lte: new Date() },
+        OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
+        AND: [
+          { OR: [{ branchId: null }, ...(input.branchId ? [{ branchId: input.branchId }] : [])] },
+          { OR: [{ departmentId: null }, ...(input.departmentId ? [{ departmentId: input.departmentId }] : [])] },
+        ],
+        roles: {
+          some: {
+            role: {
+              status: 'ACTIVE',
+              permissions: {
+                some: {
+                  permission: {
+                    scope: 'TENANT',
+                    status: 'ACTIVE',
+                    effect: 'ALLOW',
+                    resource: 'appointments',
+                    action: { in: ['read', 'create', 'update'] },
+                  },
+                },
+              },
+            },
+          },
+        },
+        NOT: {
+          roles: {
+            some: {
+              role: {
+                permissions: {
+                  some: {
+                    permission: {
+                      scope: 'TENANT',
+                      status: 'ACTIVE',
+                      effect: 'DENY',
+                      resource: 'appointments',
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      select: { userId: true },
+    });
+    const recipients = [...new Set([input.patientUserId, ...memberships.map(({ userId }) => userId)])];
+    const patientBody = input.status === AppointmentStatus.REQUESTED
+      ? `Your appointment request ${input.appointmentNumber} was received by ${input.tenantName}.`
+      : `Appointment ${input.appointmentNumber} at ${input.tenantName} is now ${input.status.replaceAll('_', ' ').toLowerCase()}.`;
+    const staffBody = input.status === AppointmentStatus.REQUESTED
+      ? `A new patient portal appointment request (${input.appointmentNumber}) needs review.`
+      : `Appointment ${input.appointmentNumber} status changed to ${input.status.replaceAll('_', ' ').toLowerCase()}.`;
+    await Promise.all(recipients.map((recipientUserId) => {
+      const isPatient = recipientUserId === input.patientUserId;
+      return this.notifications.createNotificationInTransaction(tx, {
+        tenantId: input.tenantId,
+        recipientUserId,
+        type: `APPOINTMENT_${input.status}`,
+        title: isPatient ? 'Appointment update' : 'Appointment activity',
+        body: isPatient ? patientBody : staffBody,
+        data: { appointmentId: input.appointmentId, appointmentNumber: input.appointmentNumber, status: input.status },
+        channels: [NotificationChannel.IN_APP, NotificationChannel.EMAIL],
+        idempotencyPrefix: input.eventKey,
+      });
+    }));
+  }
+
+  async discoverFacilities(query?: { search?: string }) {
+    const search = query?.search?.trim();
+    const facilities = await this.database.client.tenant.findMany({
       where: {
         status: RecordStatus.ACTIVE,
         deletedAt: null,
         setup: { is: { status: 'LIVE' } },
+        website: { is: { status: 'PUBLISHED' } },
+        bookingPolicy: { is: { allowOnlineBooking: true } },
         services: {
           some: {
             status: RecordStatus.ACTIVE,
@@ -84,6 +178,28 @@ export class AppointmentsService {
             },
           },
         },
+        ...(search ? {
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { legalName: { contains: search, mode: 'insensitive' } },
+            { profile: { is: { businessName: { contains: search, mode: 'insensitive' } } } },
+            { branches: { some: { status: RecordStatus.ACTIVE, deletedAt: null, OR: [
+              { address: { contains: search, mode: 'insensitive' } },
+              { town: { contains: search, mode: 'insensitive' } },
+              { county: { contains: search, mode: 'insensitive' } },
+            ] } } },
+            { services: { some: { status: RecordStatus.ACTIVE, deletedAt: null, OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { category: { contains: search, mode: 'insensitive' } },
+              { description: { contains: search, mode: 'insensitive' } },
+            ] } } },
+            { providers: { some: { status: RecordStatus.ACTIVE, deletedAt: null, OR: [
+              { professionalTitle: { contains: search, mode: 'insensitive' } },
+              { specialty: { contains: search, mode: 'insensitive' } },
+              { user: { is: { displayName: { contains: search, mode: 'insensitive' } } } },
+            ] } } },
+          ],
+        } : {}),
       },
       select: {
         id: true,
@@ -101,9 +217,27 @@ export class AppointmentsService {
             contactPhone: true,
           },
         },
+        website: {
+          select: {
+            publishedContent: true,
+          },
+        },
         branches: {
           where: { status: RecordStatus.ACTIVE, deletedAt: null },
-          select: { id: true, name: true },
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            town: true,
+            county: true,
+            postalCode: true,
+            latitude: true,
+            longitude: true,
+            contactPhone: true,
+            openingTime: true,
+            closingTime: true,
+            operatingDays: true,
+          },
           orderBy: { name: 'asc' },
         },
         departments: {
@@ -125,8 +259,77 @@ export class AppointmentsService {
           },
           orderBy: { name: 'asc' },
         },
+        providers: {
+          where: {
+            status: RecordStatus.ACTIVE,
+            deletedAt: null,
+            availabilityRules: { some: { isActive: true } },
+          },
+          select: {
+            id: true,
+            professionalTitle: true,
+            specialty: true,
+            user: { select: { displayName: true } },
+            availabilityRules: {
+              where: { isActive: true },
+              select: { branchId: true, departmentId: true, serviceId: true },
+            },
+          },
+          orderBy: { user: { displayName: 'asc' } },
+        },
       },
       orderBy: { name: 'asc' },
+      take: 100,
+    });
+    return facilities.flatMap(({ providers, website, ...facility }) => {
+      if (!website?.publishedContent) return [];
+      const publicContent = parseTenantWebsiteContent(
+        website.publishedContent,
+        facility.name,
+      );
+      const publicBranchIds = new Set(publicContent.branchIds);
+      const publicServiceIds = new Set(publicContent.serviceIds);
+      const branches = facility.branches.filter((branch) =>
+        publicBranchIds.has(branch.id),
+      );
+      if (!branches.length) return [];
+
+      const providersWithPublicServices = providers.map(({ availabilityRules, ...provider }) => {
+        const eligibleServices = facility.services.filter((service) =>
+          publicServiceIds.has(service.id) &&
+          availabilityRules.some((rule) =>
+            (!rule.serviceId || rule.serviceId === service.id) &&
+            (!rule.branchId || publicBranchIds.has(rule.branchId)) &&
+            (!rule.branchId || !service.branchId || rule.branchId === service.branchId) &&
+            (!rule.departmentId || !service.departmentId || rule.departmentId === service.departmentId),
+          ),
+        );
+        return {
+          ...provider,
+          eligibleServiceIds: eligibleServices.map((service) => service.id),
+          branchIds: [...new Set(availabilityRules
+            .map((rule) => rule.branchId)
+            .filter((branchId) => branchId === null || publicBranchIds.has(branchId)))],
+          departmentIds: [...new Set(availabilityRules.map((rule) => rule.departmentId))],
+        };
+      });
+      const services = facility.services.filter((service) =>
+        publicServiceIds.has(service.id) &&
+        (!service.branchId || publicBranchIds.has(service.branchId)) &&
+        providersWithPublicServices.some((provider) =>
+          provider.eligibleServiceIds.includes(service.id),
+        ),
+      );
+      if (!services.length) return [];
+      const serviceDepartmentIds = new Set(
+        services.flatMap((service) => service.departmentId ? [service.departmentId] : []),
+      );
+      const departments = facility.departments.filter((department) =>
+        (!department.branchId || publicBranchIds.has(department.branchId)) &&
+        (serviceDepartmentIds.has(department.id) ||
+          services.some((service) => !service.departmentId)),
+      );
+      return [{ ...facility, branches, departments, services }];
     });
   }
 
@@ -148,6 +351,16 @@ export class AppointmentsService {
     }
 
     const db = this.database.client;
+    const publicContent = await this.getPublicBookingContent(query.tenantId);
+    if (!publicContent) {
+      throw new NotFoundException('This facility is not accepting public online appointments');
+    }
+    if (!publicContent.serviceIds.includes(query.serviceId)) {
+      throw new NotFoundException('This service is not offered for public appointments');
+    }
+    if (query.branchId && !publicContent.branchIds.includes(query.branchId)) {
+      throw new NotFoundException('This branch is not offered for public appointments');
+    }
     const service = await db.service.findFirst({
       where: {
         id: query.serviceId,
@@ -161,8 +374,11 @@ export class AppointmentsService {
             setup: { is: { status: 'LIVE' } },
           },
         },
-        ...(query.branchId ? { OR: [{ branchId: null }, { branchId: query.branchId }] } : {}),
-        ...(query.departmentId ? { OR: [{ departmentId: null }, { departmentId: query.departmentId }] } : {}),
+        AND: [
+          ...(query.branchId ? [{ OR: [{ branchId: null }, { branchId: query.branchId }] }] : []),
+          ...(!query.branchId ? [{ OR: [{ branchId: null }, { branchId: { in: publicContent.branchIds } }] }] : []),
+          ...(query.departmentId ? [{ OR: [{ departmentId: null }, { departmentId: query.departmentId }] }] : []),
+        ],
       },
       select: { id: true, durationMin: true, branchId: true, departmentId: true },
     });
@@ -175,10 +391,14 @@ export class AppointmentsService {
       where: {
         tenantId: query.tenantId,
         isActive: true,
-        ...(query.providerId ? { providerId: query.providerId } : {}),
-        ...(query.branchId ? { OR: [{ branchId: null }, { branchId: query.branchId }] } : {}),
-        ...(query.departmentId ? { OR: [{ departmentId: null }, { departmentId: query.departmentId }] } : {}),
-        OR: [{ serviceId: null }, { serviceId: service.id }],
+        ...(query.providerId
+          ? { providerId: query.providerId }
+          : {}),
+        AND: [
+          ...(query.branchId ? [{ OR: [{ branchId: null }, { branchId: query.branchId }] }] : []),
+          ...(query.departmentId ? [{ OR: [{ departmentId: null }, { departmentId: query.departmentId }] }] : []),
+          { OR: [{ serviceId: null }, { serviceId: service.id }] },
+        ],
         provider: {
           is: {
             status: RecordStatus.ACTIVE,
@@ -325,6 +545,7 @@ export class AppointmentsService {
 
           const branchId = query.branchId ?? rule.branchId ?? service.branchId;
           const departmentId = query.departmentId ?? rule.departmentId ?? service.departmentId;
+          if (!branchId || !publicContent.branchIds.includes(branchId)) continue;
           const conflict = await db.appointment.findFirst({
             where: {
               tenantId: query.tenantId,
@@ -336,6 +557,19 @@ export class AppointmentsService {
             select: { id: true },
           });
           if (conflict) continue;
+
+          const activeHold = await db.appointmentSlotHold.findFirst({
+            where: {
+              tenantId: query.tenantId,
+              providerId: rule.providerId,
+              status: 'ACTIVE',
+              expiresAt: { gt: now },
+              startAt: { lt: endAt },
+              endAt: { gt: startAt },
+            },
+            select: { id: true },
+          });
+          if (activeHold) continue;
 
           const block = await db.availabilityBlock.findFirst({
             where: {
@@ -353,7 +587,7 @@ export class AppointmentsService {
           });
           if (block) continue;
 
-          const key = `${rule.providerId}:${startAt.toISOString()}`;
+          const key = `${branchId}:${departmentId ?? ''}:${startAt.toISOString()}`;
           if (slotKeys.has(key)) continue;
           slotKeys.add(key);
 
@@ -374,6 +608,261 @@ export class AppointmentsService {
     }
 
     return slots.sort((a, b) => a.startAt.localeCompare(b.startAt));
+  }
+
+  async assertPublicBookingSelection(
+    tenantId: string,
+    serviceId: string,
+    branchId: string,
+  ): Promise<void> {
+    const publicContent = await this.getPublicBookingContent(tenantId);
+    if (
+      !publicContent ||
+      !publicContent.serviceIds.includes(serviceId) ||
+      !publicContent.branchIds.includes(branchId)
+    ) {
+      throw new NotFoundException('This branch or service is no longer offered for public appointments');
+    }
+  }
+
+  private async getPublicBookingContent(tenantId: string) {
+    const website = await this.database.client.tenantWebsite.findFirst({
+      where: {
+        tenantId,
+        status: 'PUBLISHED',
+        tenant: {
+          is: {
+            status: RecordStatus.ACTIVE,
+            deletedAt: null,
+            setup: { is: { status: 'LIVE' } },
+            bookingPolicy: { is: { allowOnlineBooking: true } },
+          },
+        },
+      },
+      select: {
+        publishedContent: true,
+        tenant: { select: { name: true } },
+      },
+    });
+    if (!website?.publishedContent) return null;
+    return parseTenantWebsiteContent(website.publishedContent, website.tenant.name);
+  }
+
+  async getPatientBookingEligibility(userId: string, tenantId: string) {
+    const db = this.database.client;
+    const [profile, identity, patientRecord, tenant] = await Promise.all([
+      db.patientProfile.findUnique({
+        where: { userId },
+        select: { id: true, user: { select: { status: true, deletedAt: true } } },
+      }),
+      db.identity.findFirst({
+        where: { userId, status: RecordStatus.ACTIVE, verifiedAt: { not: null } },
+        select: { id: true },
+      }),
+      db.patientTenantRecord.findFirst({
+        where: { tenantId, patientProfile: { userId }, deletedAt: null },
+        select: { status: true },
+      }),
+      db.tenant.findFirst({
+        where: {
+          id: tenantId,
+          status: RecordStatus.ACTIVE,
+          deletedAt: null,
+          setup: { is: { status: 'LIVE' } },
+          website: { is: { status: 'PUBLISHED' } },
+          bookingPolicy: { is: { allowOnlineBooking: true } },
+        },
+        select: {
+          id: true,
+          website: { select: { publishedContent: true } },
+        },
+      }),
+    ]);
+    const userActive = Boolean(profile && profile.user.status === RecordStatus.ACTIVE && !profile.user.deletedAt);
+    const identityVerified = Boolean(identity);
+    const facilityRegistrationActive = patientRecord?.status === 'ACTIVE';
+    const facilityBookable = Boolean(tenant?.website?.publishedContent);
+    const reason = !profile
+      ? 'PATIENT_PROFILE_REQUIRED'
+      : !userActive
+        ? 'ACCOUNT_INACTIVE'
+        : !identityVerified
+          ? 'IDENTITY_VERIFICATION_REQUIRED'
+          : !facilityBookable
+            ? 'FACILITY_NOT_BOOKABLE'
+            : !facilityRegistrationActive
+              ? patientRecord?.status === 'PENDING' ? 'FACILITY_REGISTRATION_PENDING' : 'FACILITY_REGISTRATION_REQUIRED'
+              : null;
+    return {
+      canBook: reason === null,
+      identityVerified,
+      patientProfileExists: Boolean(profile),
+      facilityRegistrationStatus: patientRecord?.status ?? null,
+      reason,
+    };
+  }
+
+  async finalizePaidBooking(userId: string, paymentIntentId: string, providerReceipt: string) {
+    const intent = await this.database.client.appointmentPaymentIntent.findFirst({
+      where: {
+        id: paymentIntentId,
+        status: { in: ['PENDING', 'RECONCILIATION_REQUIRED'] },
+        patient: { is: { patientProfile: { is: { userId } } } },
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        patientTenantRecordId: true,
+        slotHoldId: true,
+        amount: true,
+        currency: true,
+        tenant: { select: { name: true } },
+        slotHold: {
+          select: {
+            status: true,
+            expiresAt: true,
+            providerId: true,
+            branchId: true,
+            departmentId: true,
+            serviceId: true,
+            startAt: true,
+            endAt: true,
+            timeZone: true,
+            reason: true,
+          },
+        },
+      },
+    });
+    if (!intent) throw new NotFoundException('Pending appointment payment was not found.');
+    if (intent.amount.toNumber() !== 100 || intent.currency !== 'KES') {
+      throw new ConflictException('Appointment deposit amount or currency is invalid.');
+    }
+    if (intent.slotHold.status !== 'ACTIVE' || intent.slotHold.expiresAt <= new Date()) {
+      throw new ConflictException('The slot hold expired before payment could be finalized. Payment requires reconciliation.');
+    }
+    const eligibility = await this.getPatientBookingEligibility(userId, intent.tenantId);
+    if (!eligibility.canBook) throw new ForbiddenException('Patient eligibility changed before booking could be finalized.');
+
+    await this.assertPublicBookingSelection(
+      intent.tenantId,
+      intent.slotHold.serviceId,
+      intent.slotHold.branchId ?? '',
+    );
+
+    const booking: CreatePatientAppointmentDto = {
+      tenantId: intent.tenantId,
+      serviceId: intent.slotHold.serviceId,
+      providerId: intent.slotHold.providerId,
+      ...(intent.slotHold.branchId ? { branchId: intent.slotHold.branchId } : {}),
+      ...(intent.slotHold.departmentId ? { departmentId: intent.slotHold.departmentId } : {}),
+      startAt: intent.slotHold.startAt.toISOString(),
+      endAt: intent.slotHold.endAt.toISOString(),
+      timeZone: intent.slotHold.timeZone,
+      ...(intent.slotHold.reason ? { reason: intent.slotHold.reason } : {}),
+    };
+    await this.validateResources(intent.tenantId, booking, intent.slotHold.branchId, intent.slotHold.departmentId);
+
+    try {
+      return await this.database.client.$transaction(async (tx) => {
+        const currentIntent = await tx.appointmentPaymentIntent.findFirst({
+          where: { id: intent.id, patientTenantRecordId: intent.patientTenantRecordId, status: { in: ['PENDING', 'RECONCILIATION_REQUIRED'] } },
+          select: { id: true, status: true },
+        });
+        const currentHold = await tx.appointmentSlotHold.findFirst({
+          where: { id: intent.slotHoldId, tenantId: intent.tenantId, patientTenantRecordId: intent.patientTenantRecordId, status: 'ACTIVE', expiresAt: { gt: new Date() } },
+          select: { id: true },
+        });
+        if (!currentIntent || !currentHold) throw new ConflictException('The paid slot is no longer available for automatic booking.');
+
+        await this.validateProviderAvailability(
+          tx,
+          intent.tenantId,
+          booking,
+          intent.slotHold.branchId,
+          intent.slotHold.departmentId,
+          intent.slotHold.startAt,
+          intent.slotHold.endAt,
+          booking.timeZone,
+        );
+        const conflict = await tx.appointment.findFirst({
+          where: {
+            tenantId: intent.tenantId,
+            status: { notIn: TERMINAL_STATUSES },
+            startAt: { lt: intent.slotHold.endAt },
+            endAt: { gt: intent.slotHold.startAt },
+            OR: [
+              { patientTenantRecordId: intent.patientTenantRecordId },
+              { providerId: intent.slotHold.providerId },
+            ],
+          },
+          select: { id: true },
+        });
+        if (conflict) throw new ConflictException('The slot was taken before booking could be finalized. Payment requires reconciliation.');
+
+        const appointmentNumber = `APT-${new Date().getUTCFullYear()}-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+        const appointment = await tx.appointment.create({
+          data: {
+            tenantId: intent.tenantId,
+            patientTenantRecordId: intent.patientTenantRecordId,
+            providerId: intent.slotHold.providerId,
+            branchId: intent.slotHold.branchId,
+            departmentId: intent.slotHold.departmentId,
+            serviceId: intent.slotHold.serviceId,
+            appointmentNumber,
+            bookingSource: AppointmentBookingSource.PATIENT_PORTAL,
+            startAt: intent.slotHold.startAt,
+            endAt: intent.slotHold.endAt,
+            timeZone: booking.timeZone,
+            reason: intent.slotHold.reason,
+            createdByUserId: userId,
+            slotHoldId: intent.slotHoldId,
+            statusHistory: {
+              create: {
+                tenantId: intent.tenantId,
+                fromStatus: null,
+                toStatus: AppointmentStatus.REQUESTED,
+                reason: 'Appointment deposit verified through M-Pesa STK Push',
+                changedByUserId: userId,
+              },
+            },
+          },
+        });
+        await tx.appointmentSlotHold.update({ where: { id: intent.slotHoldId }, data: { status: 'CONSUMED' } });
+        await tx.appointmentPaymentIntent.update({
+          where: { id: intent.id },
+          data: { status: 'SUCCEEDED', providerReceipt, paidAt: new Date(), appointmentId: appointment.id },
+        });
+        await tx.auditEvent.create({
+          data: {
+            tenantId: intent.tenantId,
+            actorUserId: userId,
+            branchId: intent.slotHold.branchId,
+            action: 'PATIENT_APPOINTMENT_DEPOSIT_CONFIRMED',
+            resourceType: 'APPOINTMENT',
+            resourceId: appointment.id,
+            outcome: 'SUCCESS',
+            metadata: { appointmentNumber, paymentIntentId: intent.id, providerReceipt, amount: '100.00', currency: 'KES' },
+          },
+        });
+        await this.notifyAppointmentParticipants(tx, {
+          tenantId: intent.tenantId,
+          patientUserId: userId,
+          appointmentId: appointment.id,
+          appointmentNumber,
+          status: AppointmentStatus.REQUESTED,
+          eventKey: `${appointment.id}:REQUESTED`,
+          branchId: intent.slotHold.branchId,
+          departmentId: intent.slotHold.departmentId,
+          tenantName: intent.tenant.name,
+        });
+        return appointment;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000, maxWait: 15000 });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2034'].includes(error.code)) {
+        throw new ConflictException('Slot state changed during payment finalization; the payment requires reconciliation.');
+      }
+      throw error;
+    }
   }
 
   async createForPatient(userId: string, dto: CreatePatientAppointmentDto) {
@@ -421,6 +910,19 @@ export class AppointmentsService {
       );
     }
 
+    const user = await db.user.findFirst({
+      where: { id: userId, status: RecordStatus.ACTIVE, deletedAt: null },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('Active patient account not found');
+    const verifiedIdentity = await db.identity.findFirst({
+      where: { userId, status: RecordStatus.ACTIVE, verifiedAt: { not: null } },
+      select: { id: true },
+    });
+    if (!verifiedIdentity) {
+      throw new ForbiddenException('Verify your account identity before booking an appointment.');
+    }
+
     const tenant = await db.tenant.findFirst({
       where: {
         id: dto.tenantId,
@@ -428,7 +930,7 @@ export class AppointmentsService {
         deletedAt: null,
         setup: { is: { status: 'LIVE' } },
       },
-      select: { id: true },
+      select: { id: true, name: true },
     });
 
     if (!tenant) {
@@ -572,6 +1074,18 @@ export class AppointmentsService {
             },
           });
 
+          await this.notifyAppointmentParticipants(tx, {
+            tenantId: dto.tenantId,
+            patientUserId: userId,
+            appointmentId: appointment.id,
+            appointmentNumber,
+            status: AppointmentStatus.REQUESTED,
+            eventKey: `${appointment.id}:REQUESTED`,
+            branchId,
+            departmentId,
+            tenantName: tenant.name,
+          });
+
           return appointment;
         },
         {
@@ -632,7 +1146,7 @@ export class AppointmentsService {
         status: 'ACTIVE',
         deletedAt: null,
       },
-      select: { id: true },
+      select: { id: true, patientProfile: { select: { userId: true } } },
     });
 
     if (!patient) {
@@ -681,6 +1195,18 @@ export class AppointmentsService {
               endAt,
               timeZone,
             );
+            const heldSlot = await tx.appointmentSlotHold.findFirst({
+              where: {
+                tenantId: context.tenantId,
+                providerId: dto.providerId,
+                status: 'ACTIVE',
+                expiresAt: { gt: new Date() },
+                startAt: { lt: endAt },
+                endAt: { gt: startAt },
+              },
+              select: { id: true },
+            });
+            if (heldSlot) throw new ConflictException('This time is temporarily reserved for a patient completing payment.');
           }
 
           const conflict = await tx.appointment.findFirst({
@@ -763,6 +1289,19 @@ export class AppointmentsService {
             },
           });
 
+          const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: context.tenantId }, select: { name: true } });
+          await this.notifyAppointmentParticipants(tx, {
+            tenantId: context.tenantId,
+            patientUserId: patient.patientProfile.userId,
+            appointmentId: appointment.id,
+            appointmentNumber,
+            status: AppointmentStatus.REQUESTED,
+            eventKey: `${appointment.id}:REQUESTED`,
+            branchId,
+            departmentId,
+            tenantName: tenant.name,
+          });
+
           return appointment;
         },
         {
@@ -811,6 +1350,7 @@ export class AppointmentsService {
         id: true,
         appointmentNumber: true,
         status: true,
+        bookingSource: true,
         startAt: true,
         endAt: true,
         timeZone: true,
@@ -838,6 +1378,15 @@ export class AppointmentsService {
             specialty: true,
           },
         },
+        paymentIntents: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { status: true, amount: true, currency: true, providerReceipt: true, paidAt: true },
+        },
+        refunds: {
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, status: true, amount: true, currency: true, refundMethod: true, reason: true, evidenceRef: true, providerReference: true, createdAt: true },
+        },
       },
       orderBy: { startAt: 'desc' },
       take: 200,
@@ -860,6 +1409,8 @@ export class AppointmentsService {
     return this.database.client.appointment.findMany({
       where: {
         tenantId: context.tenantId,
+        ...(context.branchId ? { branchId: context.branchId } : {}),
+        ...(context.departmentId ? { departmentId: context.departmentId } : {}),
         ...(query.status ? { status: query.status } : {}),
         ...(query.patientTenantRecordId
           ? { patientTenantRecordId: query.patientTenantRecordId }
@@ -892,6 +1443,15 @@ export class AppointmentsService {
         branch: { select: { id: true, name: true } },
         department: { select: { id: true, name: true } },
         service: { select: { id: true, name: true, code: true } },
+        paymentIntents: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { id: true, internalReference: true, status: true, amount: true, currency: true, providerReceipt: true, paidAt: true },
+        },
+        refunds: {
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, status: true, amount: true, currency: true, reason: true, evidenceRef: true, providerReference: true, createdAt: true },
+        },
       },
       take: 200,
     });
@@ -901,7 +1461,12 @@ export class AppointmentsService {
     const context = await this.authorization.getContext(userId);
 
     const appointment = await this.database.client.appointment.findFirst({
-      where: { id: appointmentId, tenantId: context.tenantId },
+      where: {
+        id: appointmentId,
+        tenantId: context.tenantId,
+        ...(context.branchId ? { branchId: context.branchId } : {}),
+        ...(context.departmentId ? { departmentId: context.departmentId } : {}),
+      },
       include: {
         patientTenantRecord: {
           select: { id: true, patientNumber: true },
@@ -942,7 +1507,12 @@ export class AppointmentsService {
     return this.database.client.$transaction(
       async (tx) => {
         const appointment = await tx.appointment.findFirst({
-          where: { id: appointmentId, tenantId: context.tenantId },
+          where: {
+            id: appointmentId,
+            tenantId: context.tenantId,
+            ...(context.branchId ? { branchId: context.branchId } : {}),
+            ...(context.departmentId ? { departmentId: context.departmentId } : {}),
+          },
         });
 
         if (!appointment) {
@@ -984,6 +1554,9 @@ export class AppointmentsService {
           throw new BadRequestException(
             'An appointment cannot be marked no-show before its scheduled end',
           );
+        }
+        if (toStatus === AppointmentStatus.NO_SHOW && (!reason || reason.length < 3)) {
+          throw new BadRequestException('A documented reason is required before flagging a no-show. The patient may dispute this decision.');
         }
 
         const updated = await tx.appointment.update({
@@ -1036,6 +1609,25 @@ export class AppointmentsService {
           },
         });
 
+        const patient = await tx.patientTenantRecord.findFirst({
+          where: { id: appointment.patientTenantRecordId, tenantId: context.tenantId },
+          select: { patientProfile: { select: { userId: true } } },
+        });
+        const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: context.tenantId }, select: { name: true } });
+        if (patient) {
+          await this.notifyAppointmentParticipants(tx, {
+            tenantId: context.tenantId,
+            patientUserId: patient.patientProfile.userId,
+            appointmentId: appointment.id,
+            appointmentNumber: appointment.appointmentNumber,
+            status: toStatus,
+            eventKey: `${appointment.id}:${toStatus}:${updated.updatedAt.toISOString()}`,
+            branchId: appointment.branchId ?? context.branchId,
+            departmentId: appointment.departmentId ?? context.departmentId,
+            tenantName: tenant.name,
+          });
+        }
+
         return updated;
       },
       {
@@ -1054,6 +1646,190 @@ export class AppointmentsService {
       }
       throw error;
     });
+  }
+
+  async requestPatientRefund(userId: string, appointmentId: string, dto: RequestAppointmentRefundDto) {
+    const appointment = await this.database.client.appointment.findFirst({
+      where: { id: appointmentId, patientTenantRecord: { is: { patientProfile: { is: { userId } } } } },
+      select: {
+        id: true,
+        tenantId: true,
+        branchId: true,
+        departmentId: true,
+        appointmentNumber: true,
+        status: true,
+        paymentIntents: { where: { status: 'SUCCEEDED' }, select: { id: true, amount: true, currency: true }, take: 1 },
+        refunds: { where: { status: { notIn: ['FAILED', 'NOT_ELIGIBLE'] } }, select: { id: true, status: true }, take: 1 },
+        patientTenantRecord: { select: { patientProfile: { select: { userId: true } } } },
+      },
+    });
+    if (!appointment?.paymentIntents[0]) throw new NotFoundException('Paid appointment not found.');
+    if (appointment.paymentIntents[0].currency !== 'KES' || appointment.paymentIntents[0].amount.toNumber() !== 100) {
+      throw new ConflictException('The original deposit amount is not eligible for this refund workflow.');
+    }
+    if (!['CANCELLED', 'REJECTED', 'NO_SHOW'].includes(appointment.status)) {
+      throw new ConflictException('Refund requests are available after cancellation, rejection, or a no-show decision.');
+    }
+    if (appointment.refunds.length) return { id: appointment.refunds[0]!.id, status: appointment.refunds[0]!.status };
+    const status = appointment.status === 'NO_SHOW' ? 'DISPUTED' : 'REQUESTED';
+    const tenant = await this.database.client.tenant.findUniqueOrThrow({ where: { id: appointment.tenantId }, select: { name: true } });
+    return this.database.client.$transaction(async (tx) => {
+      const existingRefund = await tx.appointmentRefund.findFirst({
+        where: { paymentIntentId: appointment.paymentIntents[0]!.id, status: { notIn: ['FAILED', 'NOT_ELIGIBLE', 'REFUNDED'] } },
+        select: { id: true, status: true },
+      });
+      if (existingRefund) return { id: existingRefund.id, status: existingRefund.status };
+      const refund = await tx.appointmentRefund.create({
+        data: {
+          tenantId: appointment.tenantId,
+          appointmentId: appointment.id,
+          paymentIntentId: appointment.paymentIntents[0]!.id,
+          amount: new Prisma.Decimal(100),
+          currency: 'KES',
+          status,
+          reason: dto.reason.trim(),
+          actorUserId: userId,
+        },
+      });
+      await tx.auditEvent.create({
+        data: {
+          tenantId: appointment.tenantId,
+          actorUserId: userId,
+          branchId: appointment.branchId,
+          action: status === 'DISPUTED' ? 'APPOINTMENT_NO_SHOW_DISPUTED' : 'APPOINTMENT_REFUND_REQUESTED',
+          resourceType: 'APPOINTMENT_REFUND',
+          resourceId: refund.id,
+          outcome: 'SUCCESS',
+          reason: dto.reason.trim(),
+          metadata: { appointmentId: appointment.id, appointmentNumber: appointment.appointmentNumber, paymentIntentId: appointment.paymentIntents[0]!.id, amount: '100.00', currency: 'KES' },
+        },
+      });
+      const staff = await tx.membership.findMany({
+        where: {
+          tenantId: appointment.tenantId,
+          status: 'ACTIVE',
+          startsAt: { lte: new Date() },
+          OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
+          AND: [
+            { OR: [{ branchId: null }, ...(appointment.branchId ? [{ branchId: appointment.branchId }] : [])] },
+            { OR: [{ departmentId: null }, ...(appointment.departmentId ? [{ departmentId: appointment.departmentId }] : [])] },
+          ],
+          roles: { some: { role: { permissions: { some: { permission: { scope: 'TENANT', resource: 'appointments', action: 'update', effect: 'ALLOW', status: 'ACTIVE', OR: [{ tenantId: null }, { tenantId: appointment.tenantId }] } } } } } },
+          NOT: { roles: { some: { role: { permissions: { some: { permission: { scope: 'TENANT', resource: 'appointments', effect: 'DENY', status: 'ACTIVE', OR: [{ tenantId: null }, { tenantId: appointment.tenantId }] } } } } } } },
+        },
+        select: { userId: true },
+      });
+      const recipients = [...new Set([userId, ...staff.map(({ userId: recipient }) => recipient)])];
+      await Promise.all(recipients.map((recipientUserId) => {
+        const isPatient = recipientUserId === userId;
+        return this.notifications.createNotificationInTransaction(tx, {
+          tenantId: appointment.tenantId,
+          recipientUserId,
+          type: status === 'DISPUTED' ? 'APPOINTMENT_NO_SHOW_DISPUTED' : 'APPOINTMENT_REFUND_REQUESTED',
+          title: status === 'DISPUTED' ? 'No-show decision disputed' : 'Appointment refund requested',
+          body: isPatient
+            ? `Your refund request for appointment ${appointment.appointmentNumber} is recorded for facility review.`
+            : `Appointment ${appointment.appointmentNumber} has a patient refund request that needs review.`,
+          data: { appointmentId: appointment.id, refundId: refund.id },
+          channels: [NotificationChannel.IN_APP, NotificationChannel.EMAIL],
+          idempotencyPrefix: `${refund.id}:${recipientUserId}`,
+        });
+      }));
+      return { id: refund.id, status: refund.status };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+  async reviewAppointmentRefund(userId: string, appointmentId: string, refundId: string, dto: ReviewAppointmentRefundDto) {
+    const context = await this.authorization.assertPermission(userId, { resource: 'appointments', action: 'update' });
+    const [appointment, refund] = await Promise.all([
+      this.database.client.appointment.findFirst({
+        where: { id: appointmentId, tenantId: context.tenantId },
+        select: { id: true, tenantId: true, branchId: true, departmentId: true, appointmentNumber: true, status: true, patientTenantRecord: { select: { patientProfile: { select: { userId: true } } } } },
+      }),
+      this.database.client.appointmentRefund.findFirst({ where: { id: refundId, appointmentId, tenantId: context.tenantId } }),
+    ]);
+    if (!appointment || !refund) throw new NotFoundException('Appointment refund not found.');
+    if (context.branchId && context.branchId !== appointment.branchId) throw new ForbiddenException('Branch access is required to review this refund.');
+    if (context.departmentId && context.departmentId !== appointment.departmentId) throw new ForbiddenException('Department access is required to review this refund.');
+    if (refund.actorUserId === userId) throw new ForbiddenException('A different authorized reviewer must decide this refund.');
+    const allowedRefundTransitions: Record<string, string[]> = {
+      ELIGIBLE: ['PENDING', 'REFUNDED', 'FAILED', 'NOT_ELIGIBLE'],
+      REQUESTED: ['PENDING', 'REFUNDED', 'FAILED', 'DISPUTED', 'NOT_ELIGIBLE'],
+      PENDING: ['REFUNDED', 'FAILED', 'DISPUTED'],
+      DISPUTED: ['PENDING', 'REFUNDED', 'FAILED', 'NOT_ELIGIBLE'],
+      FAILED: ['PENDING', 'DISPUTED'],
+      REFUNDED: [],
+      NOT_ELIGIBLE: ['DISPUTED'],
+    };
+    if (!allowedRefundTransitions[refund.status]?.includes(dto.status)) {
+      throw new ConflictException(`Refund cannot transition from ${refund.status} to ${dto.status}.`);
+    }
+    if (dto.status === 'REFUNDED' && (!dto.evidenceRef?.trim() || !dto.refundMethod || (dto.refundMethod !== 'CASH' && !dto.providerReference?.trim()))) {
+      throw new BadRequestException('Refund evidence and method are required; electronic refunds also require the provider transaction reference.');
+    }
+    const totalRefunded = await this.database.client.appointmentRefund.aggregate({
+      where: { paymentIntentId: refund.paymentIntentId, status: 'REFUNDED', id: { not: refund.id } },
+      _sum: { amount: true },
+    });
+    const alreadyRefunded = totalRefunded._sum.amount?.toNumber() ?? 0;
+    if (alreadyRefunded + refund.amount.toNumber() > 100) throw new ConflictException('Refund amount exceeds the original KSh 100 deposit.');
+    const tenant = await this.database.client.tenant.findUniqueOrThrow({ where: { id: context.tenantId }, select: { name: true } });
+    return this.database.client.$transaction(async (tx) => {
+      const updated = await tx.appointmentRefund.update({
+        where: { id: refund.id },
+        data: {
+          status: dto.status,
+          reason: dto.reason.trim(),
+          ...(dto.refundMethod ? { refundMethod: dto.refundMethod } : {}),
+          ...(dto.evidenceRef?.trim() ? { evidenceRef: dto.evidenceRef.trim() } : {}),
+          ...(dto.providerReference?.trim() ? { providerReference: dto.providerReference.trim() } : {}),
+          reviewedByUserId: userId,
+          reviewedAt: new Date(),
+        },
+      });
+      await tx.auditEvent.create({
+        data: {
+          tenantId: context.tenantId,
+          actorUserId: userId,
+          branchId: appointment.branchId,
+          action: 'APPOINTMENT_REFUND_REVIEWED',
+          resourceType: 'APPOINTMENT_REFUND',
+          resourceId: refund.id,
+          outcome: 'SUCCESS',
+          reason: dto.reason.trim(),
+          metadata: { appointmentId, appointmentNumber: appointment.appointmentNumber, status: dto.status, amount: refund.amount.toString(), currency: refund.currency, evidenceRef: dto.evidenceRef ?? null, providerReference: dto.providerReference ?? null },
+        },
+      });
+      const memberships = await tx.membership.findMany({
+        where: {
+          tenantId: context.tenantId,
+          status: 'ACTIVE',
+          startsAt: { lte: new Date() },
+          OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
+          AND: [
+            { OR: [{ branchId: null }, ...(appointment.branchId ? [{ branchId: appointment.branchId }] : [])] },
+            { OR: [{ departmentId: null }, ...(appointment.departmentId ? [{ departmentId: appointment.departmentId }] : [])] },
+          ],
+          roles: { some: { role: { permissions: { some: { permission: { scope: 'TENANT', resource: 'appointments', action: 'read', effect: 'ALLOW', status: 'ACTIVE', OR: [{ tenantId: null }, { tenantId: context.tenantId }] } } } } } },
+          NOT: { roles: { some: { role: { permissions: { some: { permission: { scope: 'TENANT', resource: 'appointments', effect: 'DENY', status: 'ACTIVE', OR: [{ tenantId: null }, { tenantId: context.tenantId }] } } } } } } },
+        },
+        select: { userId: true },
+      });
+      const recipients = [...new Set([appointment.patientTenantRecord.patientProfile.userId, ...memberships.map(({ userId: recipient }) => recipient)])];
+      await Promise.all(recipients.map((recipientUserId) => this.notifications.createNotificationInTransaction(tx, {
+        tenantId: context.tenantId,
+        recipientUserId,
+        type: `APPOINTMENT_REFUND_${dto.status}`,
+        title: 'Appointment refund update',
+        body: recipientUserId === appointment.patientTenantRecord.patientProfile.userId
+          ? `Refund status for appointment ${appointment.appointmentNumber} is ${dto.status.toLowerCase().replaceAll('_', ' ')}.`
+          : `Refund for appointment ${appointment.appointmentNumber} was updated to ${dto.status.toLowerCase().replaceAll('_', ' ')}.`,
+        data: { appointmentId, refundId: refund.id, status: dto.status },
+        channels: [NotificationChannel.IN_APP, NotificationChannel.EMAIL],
+        idempotencyPrefix: `${refund.id}:${dto.status}:${updated.updatedAt.toISOString()}:${recipientUserId}`,
+      })));
+      return updated;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   private async validateResources(

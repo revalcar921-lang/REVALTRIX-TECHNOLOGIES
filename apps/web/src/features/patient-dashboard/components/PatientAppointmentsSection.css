@@ -1,0 +1,372 @@
+.appointment-booking-workflow,
+.appointment-booking-step {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #dce5df;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.appointment-discovery-search {
+  display: grid;
+  gap: 7px;
+}
+
+.appointment-discovery-search > label,
+.appointment-selection-grid label {
+  display: grid;
+  gap: 6px;
+  color: #344c40;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.appointment-discovery-search > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 7px;
+}
+
+.appointment-discovery-search input,
+.appointment-selection-grid input,
+.appointment-selection-grid select {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 9px 10px;
+  border: 1px solid #cbd8d1;
+  border-radius: 4px;
+  background: #fff;
+  color: #253a31;
+  font: inherit;
+  font-size: 13px;
+}
+
+.appointment-discovery-search button,
+.appointment-search-slots,
+.appointment-selected-time button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #28664a;
+  border-radius: 4px;
+  background: #28664a;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.appointment-discovery-search button:last-child {
+  border-color: #bfcfc4;
+  background: #fff;
+  color: #345446;
+}
+
+.appointment-discovery-search button:disabled,
+.appointment-search-slots:disabled,
+.appointment-selected-time button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.appointment-discovery-search > p,
+.appointment-discovery-query,
+.appointment-form-hint,
+.appointment-selected-branch {
+  margin: 0;
+  color: #63746b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.appointment-form-hint.is-error {
+  color: #9a3c2b;
+}
+
+.appointment-facility-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+  gap: 9px;
+}
+
+.appointment-facility-result {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #dce5df;
+  border-radius: 5px;
+  background: #fff;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.appointment-facility-result.is-selected {
+  border-color: #4c8a65;
+  background: #f4f9f5;
+}
+
+.appointment-facility-result-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e9f2ec;
+  color: #28664a;
+}
+
+.appointment-facility-result-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.appointment-facility-result-copy strong {
+  overflow-wrap: anywhere;
+  color: #253b31;
+  font-size: 13px;
+}
+
+.appointment-facility-result-copy small,
+.appointment-facility-distance {
+  color: #697a70;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.appointment-facility-distance {
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.appointment-step-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.appointment-step-heading > span {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: #e6f0e9;
+  color: #28664a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.appointment-step-heading h2 {
+  margin: 0;
+  color: #253b31;
+  font-size: 16px;
+}
+
+.appointment-step-heading p {
+  margin: 4px 0 0;
+  color: #66766e;
+  font-size: 12px;
+}
+
+.appointment-selection-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.appointment-reason-field {
+  grid-column: 1 / -1;
+}
+
+.appointment-reason-field span {
+  color: #77857d;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.appointment-search-slots {
+  justify-self: start;
+}
+
+.appointment-slot-option {
+  display: grid;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d8e3dc;
+  border-radius: 5px;
+  background: #fff;
+  color: #344a3f;
+  text-align: left;
+  cursor: pointer;
+}
+
+.appointment-slot-option.is-selected {
+  border-color: #41815a;
+  background: #f1f7f2;
+}
+
+.appointment-slot-selected {
+  color: #28664a;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.appointment-selected-time {
+  display: grid;
+  gap: 6px;
+  padding: 13px;
+  border: 1px solid #d8e3dc;
+  border-radius: 5px;
+  background: #f7faf7;
+}
+
+.appointment-selected-time strong {
+  color: #253b31;
+  font-size: 13px;
+}
+
+.appointment-selected-time span {
+  color: #63746b;
+  font-size: 12px;
+}
+
+.appointment-selected-time button {
+  justify-self: start;
+  margin-top: 4px;
+}
+
+.appointment-deposit-panel,
+.appointment-payment-status,
+.appointment-eligibility-guidance {
+  display: grid;
+  gap: 13px;
+  padding: 17px;
+  border: 1px solid #d6e3da;
+  border-radius: 5px;
+  background: #f7faf7;
+}
+
+.appointment-deposit-panel > p,
+.appointment-payment-status > p,
+.appointment-eligibility-guidance > p {
+  margin: 0;
+  color: #5b6f64;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.appointment-deposit-amount {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 0;
+  border-top: 1px solid #dce5df;
+  border-bottom: 1px solid #dce5df;
+  color: #465c50;
+  font-size: 13px;
+}
+
+.appointment-deposit-amount strong {
+  color: #24583c;
+  font-size: 20px;
+}
+
+.appointment-deposit-panel form {
+  display: grid;
+  gap: 9px;
+}
+
+.appointment-deposit-panel form > label:not(.appointment-deposit-consent) {
+  color: #344c40;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.appointment-deposit-panel form > input {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 10px;
+  border: 1px solid #cbd8d1;
+  border-radius: 4px;
+  background: #fff;
+  color: #253a31;
+  font: inherit;
+  font-size: 13px;
+}
+
+.appointment-deposit-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #43594d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.appointment-deposit-consent input {
+  flex: 0 0 auto;
+  margin: 2px 0 0;
+  accent-color: #28664a;
+}
+
+.appointment-hold-expiry {
+  margin: 0;
+  color: #775c2b;
+  font-size: 11px;
+}
+
+.appointment-deposit-panel form > button,
+.appointment-eligibility-guidance > button {
+  justify-self: start;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #28664a;
+  border-radius: 4px;
+  background: #28664a;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.appointment-deposit-panel form > button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.appointment-eligibility-guidance {
+  border-color: #e3c9a4;
+  background: #fffaf0;
+}
+
+@media (max-width: 620px) {
+  .appointment-discovery-search > div {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  }
+
+  .appointment-discovery-search > div input {
+    grid-column: 1 / -1;
+  }
+
+  .appointment-selection-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .appointment-reason-field {
+    grid-column: auto;
+  }
+}

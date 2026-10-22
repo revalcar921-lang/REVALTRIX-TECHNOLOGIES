@@ -28,6 +28,7 @@ export interface TenantSetupSettings {
   latestTestRun: { id: string; bookingStatus: string; rescheduleStatus: string; cancellationStatus: string; reminderStatus: string; createdAt: string } | null;
   currentTermsVersion: string | null;
   termsUrl: string | null;
+  privacyUrl: string | null;
 }
 
 export async function getTenantSetup(): Promise<TenantSetupResponse> {

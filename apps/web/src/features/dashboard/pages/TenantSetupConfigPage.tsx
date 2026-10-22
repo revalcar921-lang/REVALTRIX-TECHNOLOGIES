@@ -247,8 +247,9 @@ export function TenantSetupConfigPage() {
       {section === 'terms' ? (
         <section className="tenant-setup-config-panel">
           <div><h2>Terms acceptance</h2><p>Acceptance is recorded against the current platform terms version and signed-in administrator.</p></div>
-          {settings?.currentTermsVersion && settings.termsUrl ? <p>Current version: <strong>{settings.currentTermsVersion}</strong> · <a href={settings.termsUrl} target="_blank" rel="noreferrer">Read terms and privacy policy</a></p> : <p className="tenant-setup-config-message is-error">The platform has not configured a canonical terms version and URL. Acceptance is unavailable.</p>}
-          {settings?.compliance?.termsAcceptedAt ? <p className="tenant-setup-config-message"><CheckCircle2 size={16} /> Version {settings.compliance.termsVersion} accepted at {new Date(settings.compliance.termsAcceptedAt).toLocaleString()}.</p> : <button type="button" className="tenant-primary-action" disabled={saving || !settings?.currentTermsVersion || !settings.termsUrl} onClick={() => void acceptCurrentTerms()}><CheckCircle2 size={16} /> Accept current terms</button>}
+          {settings?.currentTermsVersion ? <p>Current version: <strong>{settings.currentTermsVersion}</strong></p> : null}
+          <p className="tenant-setup-config-legal-links"><a href={settings?.termsUrl ?? '/terms'} target="_blank" rel="noreferrer">Read Terms of Service</a><a href={settings?.privacyUrl ?? '/privacy'} target="_blank" rel="noreferrer">Read Privacy Policy</a></p>
+          {settings?.compliance?.termsAcceptedAt ? <p className="tenant-setup-config-message"><CheckCircle2 size={16} /> Version {settings.compliance.termsVersion} accepted at {new Date(settings.compliance.termsAcceptedAt).toLocaleString()}.</p> : <button type="button" className="tenant-primary-action" disabled={saving || !settings?.currentTermsVersion} onClick={() => void acceptCurrentTerms()}><CheckCircle2 size={16} /> Accept current terms</button>}
         </section>
       ) : null}
     </main>

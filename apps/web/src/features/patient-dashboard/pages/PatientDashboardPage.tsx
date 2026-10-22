@@ -2217,7 +2217,7 @@ export function PatientDashboardPage({
               )}
             </section>
           ) : currentPath === '/patient/appointments' ? (
-            <PatientAppointmentsSection />
+            <PatientAppointmentsSection onNavigate={onNavigate} />
           ) : currentPath === '/patient/shop' ? (
             <PatientShopPage />
           ) : (

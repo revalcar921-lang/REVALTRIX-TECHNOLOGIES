@@ -2,7 +2,6 @@ import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import { ArrowRight, Check, Clock3, MapPin, Menu, Phone, Send, X } from 'lucide-react';
 import { getAuthSession } from '../../auth/api/auth-session.js';
 import {
-  bookWebsiteAppointment,
   getMyWebsite,
   getPublicWebsite,
   getWebsiteSlots,
@@ -57,6 +56,7 @@ export function TenantPublicWebsitePage({ slug, preview = false, onNavigate }: T
     const previousTitle = document.title;
     document.title = website.content.seoTitle || website.organization.name;
     let description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    const createdDescription = !description;
     if (!description) {
       description = document.createElement('meta');
       description.name = 'description';
@@ -66,14 +66,20 @@ export function TenantPublicWebsitePage({ slug, preview = false, onNavigate }: T
     description.content = website.content.seoDescription || website.organization.description || website.organization.name;
     const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]') ?? document.createElement('link');
     const createdCanonical = !canonical.isConnected;
+    const previousCanonical = canonical.href;
     canonical.rel = 'canonical';
-    canonical.href = `${window.location.origin}/sites/${website.slug}`;
+    canonical.href = website.content.canonicalUrl || `${window.location.origin}/sites/${website.slug}`;
     if (createdCanonical) document.head.append(canonical);
     const socialMetadata = [
-      ['og:title', website.content.seoTitle || website.organization.name],
-      ['og:description', website.content.seoDescription || website.organization.description || website.organization.name],
+      ['og:title', website.content.openGraphTitle || website.content.seoTitle || website.organization.name],
+      ['og:description', website.content.openGraphDescription || website.content.seoDescription || website.organization.description || website.organization.name],
       ['og:type', 'website'],
-      ...(website.content.heroImageUrl ? [['og:image', website.content.heroImageUrl]] : []),
+      ['og:url', canonical.href],
+      ['og:image', website.content.socialShareImageUrl || website.content.heroImageUrl],
+      ['twitter:card', website.content.socialShareImageUrl || website.content.heroImageUrl ? 'summary_large_image' : 'summary'],
+      ['twitter:title', website.content.openGraphTitle || website.content.seoTitle || website.organization.name],
+      ['twitter:description', website.content.openGraphDescription || website.content.seoDescription || website.organization.description || website.organization.name],
+      ['twitter:image', website.content.socialShareImageUrl || website.content.heroImageUrl],
     ];
     const previousSocialValues = socialMetadata.map(([property]) => {
       const element = document.querySelector<HTMLMetaElement>(`meta[property="${property}"]`);
@@ -88,10 +94,61 @@ export function TenantPublicWebsitePage({ slug, preview = false, onNavigate }: T
       }
       element.content = value!;
     }
+    let keywords = document.querySelector<HTMLMetaElement>('meta[name="keywords"]');
+    const createdKeywords = !keywords;
+    if (!keywords) {
+      keywords = document.createElement('meta');
+      keywords.name = 'keywords';
+      document.head.append(keywords);
+    }
+    const previousKeywords = keywords.content;
+    keywords.content = website.content.keywords.join(', ');
+    let favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    const createdFavicon = !favicon && Boolean(website.content.faviconUrl);
+    if (!favicon && website.content.faviconUrl) {
+      favicon = document.createElement('link');
+      favicon.rel = 'icon';
+      document.head.append(favicon);
+    }
+    const previousFavicon = favicon?.href ?? '';
+    if (favicon && website.content.faviconUrl) favicon.href = website.content.faviconUrl;
+    const structuredData = document.createElement('script');
+    structuredData.type = 'application/ld+json';
+    structuredData.textContent = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': website.content.structuredDataType,
+      name: website.organization.name,
+      description: website.content.description || website.organization.description,
+      url: canonical.href,
+      ...(website.content.socialShareImageUrl || website.content.heroImageUrl ? { image: website.content.socialShareImageUrl || website.content.heroImageUrl } : {}),
+      ...(website.organization.contactPhone ? { telephone: website.organization.contactPhone } : {}),
+      ...(website.organization.contactEmail ? { email: website.organization.contactEmail } : {}),
+      ...(website.content.keywords.length ? { keywords: website.content.keywords.join(', ') } : {}),
+      ...(website.content.emergencyPhone ? { contactPoint: { '@type': 'ContactPoint', telephone: website.content.emergencyPhone, contactType: 'emergency' } } : {}),
+      ...(website.content.facebookUrl || website.content.instagramUrl || website.content.linkedinUrl ? { sameAs: [website.content.facebookUrl, website.content.instagramUrl, website.content.linkedinUrl].filter(Boolean) } : {}),
+      ...(website.organization.address || website.organization.county || website.organization.country ? {
+        address: {
+          '@type': 'PostalAddress',
+          ...(website.organization.address ? { streetAddress: website.organization.address } : {}),
+          ...(website.organization.town ? { addressLocality: website.organization.town } : {}),
+          ...(website.organization.county ? { addressRegion: website.organization.county } : {}),
+          ...(website.organization.country ? { addressCountry: website.organization.country } : {}),
+        },
+      } : {}),
+    });
+    document.head.append(structuredData);
     return () => {
       document.title = previousTitle;
-      description!.content = previousDescription;
+      if (createdDescription) description!.remove();
+      else description!.content = previousDescription;
       if (createdCanonical) canonical.remove();
+      else canonical.href = previousCanonical;
+      if (createdKeywords) keywords!.remove();
+      else keywords!.content = previousKeywords;
+      if (createdFavicon) favicon?.remove();
+      else if (favicon && previousFavicon) favicon.href = previousFavicon;
+      else favicon?.removeAttribute('href');
+      structuredData.remove();
       for (const previous of previousSocialValues) {
         if (!previous.element) {
           document.querySelector(`meta[property="${previous.property}"]`)?.remove();
@@ -163,31 +220,14 @@ export function TenantPublicWebsitePage({ slug, preview = false, onNavigate }: T
     if (!getAuthSession()) {
       window.sessionStorage.setItem(
         'revaltrix_site_booking_return_to',
-        `${window.location.pathname}${window.location.search}${window.location.hash}`,
+        '/patient/appointments',
       );
       onNavigate('/login');
       return;
     }
-    setBookingBusy(true);
     setBookingError(null);
-    setBookingMessage(null);
-    try {
-      const appointment = await bookWebsiteAppointment(website.slug, {
-        serviceId: selectedServiceId,
-        ...(selectedSlot.branchId ? { branchId: selectedSlot.branchId } : {}),
-        ...(selectedSlot.departmentId ? { departmentId: selectedSlot.departmentId } : {}),
-        providerId: selectedSlot.providerId,
-        startAt: selectedSlot.startAt,
-        endAt: selectedSlot.endAt,
-        timeZone: selectedSlot.timeZone,
-      });
-      setBookingMessage(`Booking request ${appointment.appointmentNumber} was accepted with status ${appointment.status.replaceAll('_', ' ').toLowerCase()}.`);
-      setSelectedSlot(null);
-    } catch (requestError) {
-      setBookingError(requestError instanceof Error ? requestError.message : 'Unable to book this appointment.');
-    } finally {
-      setBookingBusy(false);
-    }
+    setBookingMessage('Continue in Patient Appointments to verify facility registration and complete the KSh 100 M-Pesa deposit.');
+    onNavigate('/patient/appointments');
   }
 
   if (loading) return <main className="public-site-loading" role="status">Loading organization website…</main>;
@@ -317,7 +357,7 @@ export function TenantPublicWebsitePage({ slug, preview = false, onNavigate }: T
           <section className="public-site-section public-site-faqs" id="faqs"><div className="public-site-section-heading"><div><p className="public-site-section-kicker">GOOD TO KNOW</p><h2>Frequently asked questions</h2></div></div>{content.faqs.map((faq, index) => <details key={`${faq.question}-${index}`}><summary>{faq.question}</summary><p>{faq.answer}</p></details>)}</section>
         ) : null}
 
-        <section className="public-site-contact" id="contact"><div><p className="public-site-section-kicker">GET IN TOUCH</p><h2>How can we help?</h2><p>Send a message to the organization. Responses are handled by the organization directly.</p>{website.organization.contactPhone ? <a href={`tel:${website.organization.contactPhone}`}><Phone size={16} /> {website.organization.contactPhone}</a> : null}{website.organization.contactEmail ? <a href={`mailto:${website.organization.contactEmail}`}><Send size={16} /> {website.organization.contactEmail}</a> : null}</div>
+        <section className="public-site-contact" id="contact"><div><p className="public-site-section-kicker">GET IN TOUCH</p><h2>How can we help?</h2><p>Send a message to the organization. Responses are handled by the organization directly.</p>{website.organization.contactPhone ? <a href={`tel:${website.organization.contactPhone}`}><Phone size={16} /> {website.organization.contactPhone}</a> : null}{website.organization.contactEmail ? <a href={`mailto:${website.organization.contactEmail}`}><Send size={16} /> {website.organization.contactEmail}</a> : null}{website.content.whatsapp.replace(/\D/g, '') ? <a href={`https://wa.me/${website.content.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noreferrer">Message us on WhatsApp</a> : null}{website.content.emergencyPhone ? <a className="public-site-emergency-link" href={`tel:${website.content.emergencyPhone}`}><Phone size={16} /> Emergency: {website.content.emergencyPhone}</a> : null}{website.content.emergencyMessage ? <p className="public-site-emergency-message">{website.content.emergencyMessage}</p> : null}{website.content.googleBusinessProfileUrl ? <a href={website.content.googleBusinessProfileUrl} target="_blank" rel="noreferrer">View our Google Business Profile</a> : null}</div>
             <form onSubmit={(event) => void submitContact(event)}>
               <label>Your name<input name="name" required maxLength={200} autoComplete="name" /></label>
               <div className="public-site-contact-pair"><label>Email<input name="email" type="email" maxLength={320} autoComplete="email" /></label><label>Phone<input name="phone" type="tel" maxLength={50} autoComplete="tel" /></label></div>
@@ -337,6 +377,12 @@ export function TenantPublicWebsitePage({ slug, preview = false, onNavigate }: T
 
 function projectDraftWebsite(data: TenantWebsiteAdminResponse): PublicTenantWebsite {
   const content = data.website.draftContent;
+  const {
+    branchIds: _branchIds,
+    serviceIds: _serviceIds,
+    providerIds: _providerIds,
+    ...publicContent
+  } = content;
   const branchIds = new Set(content.branchIds);
   const serviceIds = new Set(content.serviceIds);
   const providerIds = new Set(content.providerIds);
@@ -361,25 +407,7 @@ function projectDraftWebsite(data: TenantWebsiteAdminResponse): PublicTenantWebs
       contactPhone: content.contactPhone || data.tenant.profile?.contactPhone || null,
       contactEmail: content.contactEmail || data.tenant.profile?.contactEmail || null,
     },
-    content: {
-      tagline: content.tagline,
-      heroTitle: content.heroTitle,
-      heroDescription: content.heroDescription,
-      description: content.description,
-      primaryColor: content.primaryColor,
-      secondaryColor: content.secondaryColor,
-      logoUrl: content.logoUrl,
-      heroImageUrl: content.heroImageUrl,
-      contactPhone: content.contactPhone,
-      contactEmail: content.contactEmail,
-      whatsapp: content.whatsapp,
-      facebookUrl: content.facebookUrl,
-      instagramUrl: content.instagramUrl,
-      linkedinUrl: content.linkedinUrl,
-      seoTitle: content.seoTitle,
-      seoDescription: content.seoDescription,
-      faqs: content.faqs,
-    },
+    content: publicContent,
     branches,
     services,
     providers,

@@ -25,6 +25,8 @@ export interface Branch {
   town: string | null;
   county: string | null;
   postalCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
   contactPhone: string | null;
   contactEmail: string | null;
   openingTime: string | null;
@@ -46,6 +48,8 @@ export interface CreateBranchInput {
   town?: string;
   county?: string;
   postalCode?: string;
+  latitude?: number;
+  longitude?: number;
   contactPhone?: string;
   contactEmail?: string;
   openingTime?: string;
@@ -61,6 +65,8 @@ export interface UpdateBranchInput {
   town?: string | null;
   county?: string | null;
   postalCode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   contactPhone?: string | null;
   contactEmail?: string | null;
   openingTime?: string | null;

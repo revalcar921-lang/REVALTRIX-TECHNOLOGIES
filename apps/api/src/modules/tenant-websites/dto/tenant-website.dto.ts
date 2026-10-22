@@ -93,6 +93,16 @@ export class UpdateTenantWebsiteDto {
   whatsapp?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  emergencyPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  emergencyMessage?: string;
+
+  @IsOptional()
   @ValidateIf((_object, value) => value !== '')
   @IsUrl({ protocols: ['https'], require_protocol: true })
   @MaxLength(500)
@@ -119,6 +129,48 @@ export class UpdateTenantWebsiteDto {
   @IsString()
   @MaxLength(320)
   seoDescription?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  openGraphTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(320)
+  openGraphDescription?: string;
+
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== '')
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @MaxLength(1000)
+  canonicalUrl?: string;
+
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== '')
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @MaxLength(1000)
+  socialShareImageUrl?: string;
+
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== '')
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @MaxLength(1000)
+  faviconUrl?: string;
+
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== '')
+  @IsUrl({ protocols: ['https'], require_protocol: true })
+  @MaxLength(1000)
+  googleBusinessProfileUrl?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @MaxLength(60, { each: true })
+  keywords?: string[];
 
   @IsOptional()
   @IsArray()

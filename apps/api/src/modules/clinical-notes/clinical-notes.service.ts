@@ -843,7 +843,9 @@ export class ClinicalNotesService {
       updatedAt: true,
       encounter: {
         select: {
-          },
+          id: true,
+          encounterNumber: true,
+        },
       },
     } satisfies Prisma.ClinicalNoteSelect;
   }

@@ -19,6 +19,7 @@ import type {
 import {
   parseTenantWebsiteContent,
   provisionTenantWebsite,
+  structuredDataTypeForTenant,
   type TenantWebsiteContent,
 } from './tenant-website.utils.js';
 
@@ -125,7 +126,10 @@ export class TenantWebsitesService {
         id: website.id,
         slug: website.slug,
         status: website.status,
-        draftContent: parseTenantWebsiteContent(website.draftContent, tenant.name),
+        draftContent: {
+          ...parseTenantWebsiteContent(website.draftContent, tenant.name),
+          structuredDataType: structuredDataTypeForTenant(tenant.type),
+        },
         publishedRevision: website.publishedRevision,
         revision: website.revision,
         publishedAt: website.publishedAt,
@@ -169,7 +173,7 @@ export class TenantWebsitesService {
     const current = await this.getOrProvision(context.tenantId, userId);
     const tenant = await this.database.client.tenant.findUniqueOrThrow({
       where: { id: context.tenantId },
-      select: { name: true },
+      select: { name: true, type: true },
     });
     const currentContent = parseTenantWebsiteContent(current.draftContent, tenant.name);
     const nextContent = { ...currentContent } as TenantWebsiteContent;
@@ -178,6 +182,7 @@ export class TenantWebsitesService {
         (nextContent as unknown as Record<string, unknown>)[key] = value;
       }
     }
+    nextContent.structuredDataType = structuredDataTypeForTenant(tenant.type);
     await this.validateSelections(context.tenantId, nextContent);
     this.validateImageUrls(nextContent);
 
@@ -245,9 +250,10 @@ export class TenantWebsitesService {
     const current = await this.getOrProvision(context.tenantId, userId);
     const tenant = await this.database.client.tenant.findUniqueOrThrow({
       where: { id: context.tenantId },
-      select: { name: true },
+      select: { name: true, type: true },
     });
     const content = parseTenantWebsiteContent(current.draftContent, tenant.name);
+    content.structuredDataType = structuredDataTypeForTenant(tenant.type);
     if (content.branchIds.length === 0 || content.serviceIds.length === 0) {
       throw new ConflictException({
         message: 'Select at least one active branch and service for the public website.',
@@ -367,6 +373,7 @@ export class TenantWebsitesService {
             name: true,
             type: true,
             setup: { select: { status: true } },
+            bookingPolicy: { select: { allowOnlineBooking: true } },
             profile: {
               select: {
                 description: true,
@@ -454,6 +461,7 @@ export class TenantWebsitesService {
       },
       content: {
         ...content,
+        structuredDataType: structuredDataTypeForTenant(website.tenant.type),
         branchIds: undefined,
         serviceIds: undefined,
         providerIds: undefined,
@@ -462,7 +470,10 @@ export class TenantWebsitesService {
       services,
       providers,
       bookingAvailable:
-        website.tenant.setup?.status === 'LIVE' && services.length > 0 && providers.length > 0,
+        website.tenant.setup?.status === 'LIVE' &&
+        website.tenant.bookingPolicy?.allowOnlineBooking === true &&
+        services.length > 0 &&
+        providers.length > 0,
     };
   }
 
@@ -541,23 +552,11 @@ export class TenantWebsitesService {
   }
 
   async createAppointment(userId: string, slug: string, dto: TenantWebsiteAppointmentDto) {
-    const website = await this.getPublishedWebsiteForBooking(slug, dto.serviceId, dto.branchId);
-    const content = parseTenantWebsiteContent(website.publishedContent!, website.tenant.name);
-    if (!content.providerIds.includes(dto.providerId)) {
-      throw new NotFoundException('This provider is not offered on the public website.');
-    }
-    const appointment = await this.appointments.createForPatient(userId, {
-      ...dto,
-      tenantId: website.tenantId,
+    await this.getPublishedWebsiteForBooking(slug, dto.serviceId, dto.branchId);
+    throw new ConflictException({
+      message: 'Online bookings require patient eligibility verification and the KSh 100 deposit workflow.',
+      bookingRoute: '/patient/appointments',
     });
-    return {
-      id: appointment.id,
-      appointmentNumber: appointment.appointmentNumber,
-      status: appointment.status,
-      startAt: appointment.startAt,
-      endAt: appointment.endAt,
-      timeZone: appointment.timeZone,
-    };
   }
 
   private async getPublishedWebsiteForBooking(slug: string, serviceId: string, branchId?: string) {
@@ -565,7 +564,14 @@ export class TenantWebsitesService {
       where: {
         slug,
         status: TenantWebsiteStatus.PUBLISHED,
-        tenant: { is: { status: 'ACTIVE', deletedAt: null, setup: { is: { status: 'LIVE' } } } },
+        tenant: {
+          is: {
+            status: 'ACTIVE',
+            deletedAt: null,
+            setup: { is: { status: 'LIVE' } },
+            bookingPolicy: { is: { allowOnlineBooking: true } },
+          },
+        },
       },
       select: {
         id: true,
@@ -631,7 +637,7 @@ export class TenantWebsitesService {
   }
 
   private validateImageUrls(content: TenantWebsiteContent) {
-    for (const url of [content.logoUrl, content.heroImageUrl]) {
+    for (const url of [content.logoUrl, content.heroImageUrl, content.socialShareImageUrl, content.faviconUrl]) {
       if (url && !/^https:\/\//i.test(url)) {
         throw new BadRequestException('Website images must use secure HTTPS URLs.');
       }

@@ -35,4 +35,18 @@ export default () => ({
       subject: process.env.WEB_PUSH_SUBJECT ?? 'mailto:admin@revaltrix.com',
     },
   },
+
+  payments: {
+    daraja: {
+      enabled: process.env.DARAJA_ENABLED === 'true',
+      settlementApproved: process.env.DARAJA_SETTLEMENT_APPROVED === 'true',
+      environment: process.env.DARAJA_ENVIRONMENT === 'production' ? 'production' : 'sandbox',
+      consumerKey: process.env.DARAJA_CONSUMER_KEY ?? '',
+      consumerSecret: process.env.DARAJA_CONSUMER_SECRET ?? '',
+      shortcode: process.env.DARAJA_SHORTCODE ?? '',
+      passkey: process.env.DARAJA_PASSKEY ?? '',
+      callbackUrl: process.env.DARAJA_CALLBACK_URL ?? '',
+      callbackToken: process.env.DARAJA_CALLBACK_TOKEN ?? '',
+    },
+  },
 });
