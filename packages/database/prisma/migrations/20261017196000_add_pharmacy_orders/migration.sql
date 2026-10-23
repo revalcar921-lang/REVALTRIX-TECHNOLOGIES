@@ -2,7 +2,10 @@ ALTER TYPE "ShopOrderStatus" ADD VALUE IF NOT EXISTS 'PACKING';
 ALTER TYPE "ShopOrderStatus" ADD VALUE IF NOT EXISTS 'COMPLETED';
 ALTER TYPE "ShopOrderStatus" ADD VALUE IF NOT EXISTS 'RETURNED';
 
-CREATE TYPE "ShopOrderType" AS ENUM (
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.typname = 'ShopOrderType' AND n.nspname = 'public') THEN
+    CREATE TYPE "ShopOrderType" AS ENUM (
   'WALK_IN',
   'ONLINE',
   'PICKUP',
@@ -11,6 +14,9 @@ CREATE TYPE "ShopOrderType" AS ENUM (
   'WHOLESALE',
   'HOSPITAL'
 );
+  END IF;
+END
+$$;
 
 ALTER TABLE "shop_orders"
   ADD COLUMN "branchId" UUID,
