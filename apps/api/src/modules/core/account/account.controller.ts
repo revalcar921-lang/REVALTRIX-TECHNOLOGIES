@@ -7,6 +7,9 @@ import {
 import type { AuthenticatedRequest } from '../authentication/guards/access-token.guard.js';
 import { AccessTokenGuard } from '../authentication/guards/access-token.guard.js';
 import { DatabaseService } from '../../../database/database.service.js';
+import { AuthorizationModule } from '../../authorization/authorization.module.js';
+import { PlatformPermissionGuard } from '../../authorization/guards/platform-permission.guard.js';
+import { RequirePlatformPermission } from '../../authorization/decorators/require-platform-permission.decorator.js';
 
 @Controller('v1/core/account')
 @UseGuards(AccessTokenGuard)
@@ -14,6 +17,14 @@ export class AccountController {
   constructor(
     private readonly database: DatabaseService,
   ) {}
+
+
+  @Get('management-access')
+  @UseGuards(PlatformPermissionGuard)
+  @RequirePlatformPermission('management_portal', 'access')
+  getManagementAccess() {
+    return { allowed: true };
+  }
 
   @Get('me')
   async getMyAccount(

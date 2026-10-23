@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { getAuthSession } from '../../auth/api/auth-session.js';
 import { Check, ClipboardCheck, FileCheck2, RefreshCw, ShieldCheck, UserRoundCheck } from 'lucide-react';
 import { requestStepUpChallengeId } from '../../../lib/step-up.js';
 import {
@@ -55,9 +56,21 @@ export function SuperAdminPage({ onLogout }: { onLogout: () => void }) {
   async function loadQueues(): Promise<void> {
     setLoading(true);
     setError(null);
+
+    if (!getAuthSession()) {
+      setLoading(false);
+      onLogout();
+      return;
+    }
+
     try {
       setQueues(await getSuperAdminQueues());
     } catch (loadError) {
+      if (!getAuthSession()) {
+        onLogout();
+        return;
+      }
+
       setError(loadError instanceof Error ? loadError.message : 'Unable to load approval queues.');
     } finally {
       setLoading(false);

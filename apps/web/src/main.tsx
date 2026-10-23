@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { RegistrationDashboardPage } from './features/registration/pages/RegistrationDashboardPage.js';
 import { LoginPage } from './features/auth/components/LoginPage.js';
+import { ManagementLoginPage } from './features/auth/components/ManagementLoginPage.js';
+import { verifyManagementAccess } from './features/auth/api/management-access.api.js';
 import { RegistrationStartPage } from './features/registration/pages/RegistrationStartPage.js';
 import { PatientRegistrationPage } from './features/registration/pages/PatientRegistrationPage.js';
 import { TenantRegistrationPage } from './features/registration/pages/TenantRegistrationPage.js';
@@ -42,7 +44,9 @@ type Route =
   | { name: 'staff-department'; departmentId?: string }
   | { name: 'public-website'; slug: string; preview: boolean }
   | { name: 'legal-info'; document: 'terms' | 'privacy' }
-  | { name: 'login' };
+  | { name: 'login' }
+  | { name: 'management-login' }
+  | { name: 'management-home' };
 
 function getRoute(): Route {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
@@ -55,6 +59,9 @@ function getRoute(): Route {
       preview: new URLSearchParams(window.location.search).get('preview') === '1',
     };
   }
+
+  if (path === '/management/login') return { name: 'management-login' };
+  if (path === '/management') return { name: 'management-home' };
 
   if (path === '/terms') return { name: 'legal-info', document: 'terms' };
   if (path === '/privacy') return { name: 'legal-info', document: 'privacy' };
@@ -208,6 +215,27 @@ function App() {
       const authSession = getAuthSession();
 
       if (authSession) {
+        if (route.name === 'management-login' || route.name === 'management-home') {
+          try {
+            await verifyManagementAccess();
+            if (cancelled) return;
+            if (route.name === 'management-login') {
+              navigate('/management');
+            } else {
+              setCheckingSession(false);
+            }
+          } catch {
+            if (cancelled) return;
+            clearAuthSession();
+            if (route.name === 'management-home') {
+              navigate('/management/login');
+            } else {
+              setCheckingSession(false);
+            }
+          }
+          return;
+        }
+
         if (route.name === 'start' || route.name === 'login') {
           try {
             const result = await getMyStaffProfile();
@@ -475,6 +503,38 @@ function App() {
         onSuccess={() => navigate('/register/tenant/dashboard')}
       />
     );
+  }
+
+  if (route.name === 'management-home') {
+    return (
+      <main className="registration-page">
+        <section className="registration-card">
+          <div className="registration-header">
+            <p className="registration-eyebrow">REVALTRIX TECHNOLOGIES</p>
+            <h1>Management portal</h1>
+            <p>
+              Your management access has been verified. Available workspaces
+              and actions must be determined by the platform permissions
+              assigned to your account.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="tenant-button"
+            onClick={() => {
+              clearAuthSession();
+              navigate('/management/login');
+            }}
+          >
+            Sign out
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  if (route.name === 'management-login') {
+    return <ManagementLoginPage onSuccess={() => navigate('/management')} />;
   }
 
   if (route.name === 'login') {
