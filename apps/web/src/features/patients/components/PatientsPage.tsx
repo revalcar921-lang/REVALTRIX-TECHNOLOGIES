@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import './PatientsPage.css';
 import {
   enrollPatient,
   findExistingPatient,
@@ -501,7 +502,7 @@ export function PatientsPage({ onNavigate }: PatientsPageProps) {
   }
 
   return (
-    <main className="tenant-page">
+    <main className="tenant-page patient-management-page">
       <div className="tenant-page-header">
         <div>
           <p className="eyebrow">Patient management</p>
@@ -1090,7 +1091,13 @@ export function PatientsPage({ onNavigate }: PatientsPageProps) {
       </section>
 
       {(detailLoading || detailError || selectedPatient) && (
-        <section className="tenant-card">
+        <div className="patient-detail-modal-backdrop">
+          <section
+            className="tenant-card patient-detail-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Patient details"
+          >
           {detailLoading && <p>Loading patient details...</p>}
 
           {!detailLoading && detailError && (
@@ -1249,7 +1256,8 @@ export function PatientsPage({ onNavigate }: PatientsPageProps) {
               </div>
             </>
           )}
-        </section>
+          </section>
+        </div>
       )}
     </main>
   );
