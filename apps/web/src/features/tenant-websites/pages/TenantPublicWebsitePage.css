@@ -717,6 +717,111 @@
   text-decoration: none;
 }
 
+.public-site-header nav .public-site-nav-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #3a504b;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.public-site-header nav .public-site-nav-account:hover,
+.public-site-header nav .public-site-nav-account:focus-visible {
+  color: var(--site-primary);
+}
+
+.public-site-gallery,
+.public-site-about,
+.public-site-terms,
+.public-site-policy {
+  padding: 55px clamp(20px, 6vw, 84px);
+}
+
+.public-site-gallery .public-site-section-heading,
+.public-site-about .public-site-section-heading,
+.public-site-terms .public-site-section-heading,
+.public-site-policy .public-site-section-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.public-site-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.public-site-gallery-item {
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #eef3ef;
+  color: #20332c;
+}
+
+.public-site-gallery-image {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+  display: block;
+}
+
+.public-site-gallery-item figcaption {
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: 14px;
+  margin: 0;
+}
+
+.public-site-gallery-caption {
+  padding: 0 12px 12px;
+  font-size: 13px;
+  color: #647670;
+  margin: 0;
+}
+
+.public-site-about {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 30px;
+  align-items: start;
+}
+
+.public-site-about-image {
+  width: 100%;
+  height: 300px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.public-site-about-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.public-site-about-description {
+  font-size: 16px;
+  line-height: 1.7;
+  color: #20332c;
+  margin: 0;
+}
+
+.public-site-legal-body {
+  max-width: 720px;
+  font-size: 15px;
+  line-height: 1.8;
+  color: #20332c;
+}
+
+.public-site-legal-body p {
+  margin: 0 0 16px;
+}
+
 .public-site-loading,
 .public-site-error {
   display: grid;

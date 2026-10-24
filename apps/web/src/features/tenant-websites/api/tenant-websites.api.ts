@@ -32,6 +32,10 @@ export interface TenantWebsiteContent {
   serviceIds: string[];
   providerIds: string[];
   faqs: Array<{ question: string; answer: string }>;
+  gallery: Array<{ id: string; title: string; description: string; url: string }>;
+  about: { title: string; description: string; imageUrl?: string };
+  terms: string;
+  policy: string;
 }
 
 export interface TenantWebsiteService {
@@ -242,4 +246,13 @@ export async function submitWebsiteEnquiry(
     `/v1/tenant-websites/public/${encodeURIComponent(slug)}/enquiries`,
     { method: 'POST', body: JSON.stringify(input) },
   );
+}
+
+export async function uploadGalleryImage(file: File): Promise<{ url: string }> {
+  const formData = new FormData();
+  formData.set('file', file);
+  return authenticatedApiRequest<{ url: string }>('/v1/tenant-websites/me/gallery-upload', {
+    method: 'POST',
+    body: formData,
+  });
 }

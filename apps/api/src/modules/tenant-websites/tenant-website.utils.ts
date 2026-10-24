@@ -1,8 +1,22 @@
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 
 export interface TenantWebsiteFaq {
   question: string;
   answer: string;
+}
+
+export interface TenantWebsiteGalleryImage {
+  id: string;
+  title: string;
+  description: string;
+  url: string;
+}
+
+export interface TenantWebsiteAbout {
+  title: string;
+  description: string;
+  imageUrl?: string;
 }
 
 export interface TenantWebsiteContent {
@@ -36,6 +50,10 @@ export interface TenantWebsiteContent {
   serviceIds: string[];
   providerIds: string[];
   faqs: TenantWebsiteFaq[];
+  gallery: TenantWebsiteGalleryImage[];
+  about: TenantWebsiteAbout;
+  terms: string;
+  policy: string;
 }
 
 export function createDefaultTenantWebsiteContent(name: string): TenantWebsiteContent {
@@ -70,6 +88,10 @@ export function createDefaultTenantWebsiteContent(name: string): TenantWebsiteCo
     serviceIds: [],
     providerIds: [],
     faqs: [],
+    gallery: [],
+    about: { title: 'About us', description: '', imageUrl: '' },
+    terms: '',
+    policy: '',
   };
 }
 
@@ -196,5 +218,29 @@ export function parseTenantWebsiteContent(value: Prisma.JsonValue, fallbackName:
     serviceIds: idList('serviceIds'),
     providerIds: idList('providerIds'),
     faqs,
+    gallery: Array.isArray(source.gallery)
+      ? source.gallery
+          .filter((item): item is Record<string, Prisma.JsonValue> => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+          .map((item) => ({
+            id: typeof item.id === 'string' ? item.id : randomUUID(),
+            title: typeof item.title === 'string' ? item.title.slice(0, 200) : '',
+            description: typeof item.description === 'string' ? item.description.slice(0, 1000) : '',
+            url: typeof item.url === 'string' ? item.url : '',
+          }))
+          .slice(0, 50)
+      : [],
+    about: (() => {
+      const raw = source.about;
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        return {
+          title: typeof raw.title === 'string' ? raw.title.slice(0, 200) : defaults.about.title,
+          description: typeof raw.description === 'string' ? raw.description.slice(0, 5000) : defaults.about.description,
+          imageUrl: typeof raw.imageUrl === 'string' ? raw.imageUrl : defaults.about.imageUrl,
+        };
+      }
+      return defaults.about;
+    })(),
+    terms: typeof source.terms === 'string' ? source.terms.slice(0, 10000) : '',
+    policy: typeof source.policy === 'string' ? source.policy.slice(0, 10000) : '',
   };
 }

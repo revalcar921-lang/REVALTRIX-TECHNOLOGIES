@@ -8,11 +8,18 @@ import {
   Put,
   Req,
   UseGuards,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { ParseUUIDPipe } from '@nestjs/common';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { AccessTokenGuard } from '../core/authentication/guards/access-token.guard.js';
 import type { AuthenticatedRequest } from '../core/authentication/guards/access-token.guard.js';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { PrivateObjectStorageService } from '../storage/private-object-storage.service.js';
+import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'node:crypto';
 import {
   CreateTenantWebsiteEnquiryDto,
   TenantWebsiteAppointmentDto,
@@ -24,7 +31,11 @@ import { TenantWebsitesService } from './tenant-websites.service.js';
 
 @Controller('v1/tenant-websites')
 export class TenantWebsitesController {
-  constructor(private readonly websites: TenantWebsitesService) {}
+  constructor(
+    private readonly websites: TenantWebsitesService,
+    private readonly storage: PrivateObjectStorageService,
+    private readonly config: ConfigService,
+  ) {}
 
   @Get('me')
   @UseGuards(AccessTokenGuard)
@@ -110,5 +121,37 @@ export class TenantWebsitesController {
     @Body() dto: TenantWebsiteAppointmentDto,
   ) {
     return this.websites.createAppointment(request.auth.userId, slug, dto);
+  }
+
+  @Post('me/gallery-upload')
+  @UseGuards(AccessTokenGuard)
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1 } }),
+  )
+  async uploadGalleryImage(
+    @Req() request: AuthenticatedRequest,
+    @UploadedFile() file?: { originalname: string; mimetype: string; buffer: Buffer; size: number },
+  ) {
+    if (!file) throw new BadRequestException('Select an image to upload');
+
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException('Only JPG, PNG, WEBP, GIF, and SVG images are accepted');
+    }
+
+    const extension = file.mimetype.split('/')[1] === 'svg+xml' ? 'svg' : file.mimetype.split('/')[1];
+    const tenantId = request.auth.tenantId;
+    const storageKey = `tenant/${tenantId}/website-gallery/${randomUUID()}.${extension}`;
+
+    await this.storage.put(storageKey, file.buffer, file.mimetype);
+
+    const endpoint = this.config.get<string>('storage.endpoint')?.trim();
+    const bucket = this.config.get<string>('storage.bucket')?.trim();
+    if (!endpoint || !bucket) {
+      throw new BadRequestException('Storage is not configured for public gallery uploads.');
+    }
+
+    const publicUrl = `${endpoint}/${bucket}/${storageKey}`;
+    return { url: publicUrl };
   }
 }

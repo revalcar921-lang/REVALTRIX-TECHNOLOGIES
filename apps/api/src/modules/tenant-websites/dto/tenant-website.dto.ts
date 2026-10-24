@@ -17,6 +17,44 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+export class TenantWebsiteGalleryImageDto {
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  url?: string;
+}
+
+export class TenantWebsiteAboutDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  imageUrl?: string;
+}
+
 export class TenantWebsiteFaqDto {
   @IsString()
   @MinLength(1)
@@ -199,6 +237,28 @@ export class UpdateTenantWebsiteDto {
   @ValidateNested({ each: true })
   @Type(() => TenantWebsiteFaqDto)
   faqs?: TenantWebsiteFaqDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => TenantWebsiteGalleryImageDto)
+  gallery?: TenantWebsiteGalleryImageDto[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TenantWebsiteAboutDto)
+  about?: TenantWebsiteAboutDto;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10000)
+  terms?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10000)
+  policy?: string;
 }
 
 export class CreateTenantWebsiteEnquiryDto {

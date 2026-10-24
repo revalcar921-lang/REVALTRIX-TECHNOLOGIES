@@ -637,7 +637,7 @@ export class TenantWebsitesService {
   }
 
   private validateImageUrls(content: TenantWebsiteContent) {
-    for (const url of [content.logoUrl, content.heroImageUrl, content.socialShareImageUrl, content.faviconUrl]) {
+    for (const url of [content.logoUrl, content.heroImageUrl, content.socialShareImageUrl, content.faviconUrl, ...content.gallery.map((image) => image.url)]) {
       if (url && !/^https:\/\//i.test(url)) {
         throw new BadRequestException('Website images must use secure HTTPS URLs.');
       }

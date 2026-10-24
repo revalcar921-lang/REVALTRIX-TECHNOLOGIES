@@ -521,6 +521,42 @@
   font-size: 13px;
 }
 
+.website-editor-gallery {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 160px auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid #cad7d0;
+  border-radius: 4px;
+  background: #fff;
+  margin-bottom: 8px;
+}
+
+.website-editor-gallery-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.website-editor-gallery input,
+.website-editor-gallery textarea {
+  width: 100%;
+  min-height: 39px;
+  padding: 8px 9px;
+  border: 1px solid #cad7d0;
+  border-radius: 4px;
+  background: #fff;
+  color: #20332c;
+  font: inherit;
+  font-weight: 400;
+}
+
+.website-editor-gallery textarea {
+  min-height: 52px;
+  resize: vertical;
+}
+
 .website-editor-empty button {
   min-height: 36px;
   padding: 0 11px;

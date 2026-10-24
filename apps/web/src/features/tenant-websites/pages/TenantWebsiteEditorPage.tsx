@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { ArrowUpRight, Eye, Globe2, History, LoaderCircle, Plus, RotateCcw, Save, Send, X } from 'lucide-react';
+import { ArrowUpRight, Eye, FileText, Globe2, History, Image, LoaderCircle, Plus, RotateCcw, Save, Send, User, X } from 'lucide-react';
 import { getTenantSetup } from '../../dashboard/api/tenant-setup.api.js';
 import { requirementRoutes } from '../../dashboard/requirement-routes.js';
 import type { TenantSetupResponse } from '../../dashboard/types/tenant-setup.types.js';
@@ -11,6 +11,7 @@ import {
   saveMyWebsite,
   setWebsiteEnquiryStatus,
   unpublishMyWebsite,
+  uploadGalleryImage,
   type TenantWebsiteAdminResponse,
   type WebsiteEnquiry,
 } from '../api/tenant-websites.api.js';
@@ -27,6 +28,8 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [galleryUploading, setGalleryUploading] = useState<string | null>(null);
+  const [galleryUploadError, setGalleryUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +80,7 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
   async function save(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (!data) return;
+    const imageUrlRegex = /^https?:\/\/.+\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$/i;
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     if (formElement.dataset.section === 'services') {
@@ -123,6 +127,19 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
       branchIds: data.website.draftContent.branchIds,
       serviceIds: data.website.draftContent.serviceIds,
       faqs,
+      gallery: Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[data-gallery-row]')).map((row) => ({
+        id: row.querySelector<HTMLInputElement>('[name="gallery-id"]')?.value.trim() || crypto.randomUUID(),
+        title: row.querySelector<HTMLInputElement>('[name="gallery-title"]')?.value.trim() ?? '',
+        description: row.querySelector<HTMLTextAreaElement>('[name="gallery-description"]')?.value.trim() ?? '',
+        url: row.querySelector<HTMLInputElement>('[name="gallery-url"]')?.value.trim() ?? '',
+      })).filter((image) => image.url && imageUrlRegex.test(image.url)),
+      about: {
+        title: String(form.get('aboutTitle') ?? content.about.title),
+        description: String(form.get('aboutDescription') ?? content.about.description),
+        imageUrl: String(form.get('aboutImageUrl') ?? content.about.imageUrl),
+      },
+      terms: String(form.get('terms') ?? ''),
+      policy: String(form.get('policy') ?? ''),
     }), 'Draft saved.');
   }
 
@@ -155,6 +172,35 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
     ...current,
     website: { ...current.website, draftContent: { ...current.website.draftContent, faqs: current.website.draftContent.faqs.filter((_, itemIndex) => itemIndex !== index) } },
   } : current);
+
+  const addGalleryImage = () => setData((current) => current ? {
+    ...current,
+    website: { ...current.website, draftContent: { ...current.website.draftContent, gallery: [...(current.website.draftContent.gallery ?? []), { id: crypto.randomUUID(), title: '', description: '', url: '' }] } },
+  } : current);
+
+  const removeGalleryImage = (index: number) => setData((current) => current ? {
+    ...current,
+    website: { ...current.website, draftContent: { ...current.website.draftContent, gallery: (current.website.draftContent.gallery ?? []).filter((_, itemIndex) => itemIndex !== index) } },
+  } : current);
+
+  async function uploadGalleryImageForRow(index: number, file: File) {
+    setGalleryUploading(content.gallery?.[index]?.id ?? `new-${index}`);
+    setGalleryUploadError(null);
+    try {
+      const { url } = await uploadGalleryImage(file);
+      setData((current) => current ? {
+        ...current,
+        website: { ...current.website, draftContent: { ...current.website.draftContent, gallery: (current.website.draftContent.gallery ?? []).map((img, i) => i === index ? { ...img, url } : img) } },
+      } : current);
+    } catch (err) {
+      setGalleryUploadError(err instanceof Error ? err.message : 'Upload failed.');
+    } finally {
+      setGalleryUploading(null);
+    }
+  }
+
+  const galleryCount = (content.gallery ?? []).length;
+  const maxGalleryImages = 15;
 
   return (
     <main className="website-editor-page">
@@ -244,13 +290,61 @@ export function TenantWebsiteEditorPage({ onNavigate }: { onNavigate: (path: str
 
           <section className="website-editor-section">
             <header><div><h2>Frequently asked questions</h2><p>Answers are published exactly as submitted.</p></div><button type="button" className="website-editor-small-action" onClick={addFaq}><Plus size={15} /> Add question</button></header>
-            {content.faqs.length ? <div className="website-editor-faq-list">{content.faqs.map((faq, index) => (
+            {content.faqs?.length ? <div className="website-editor-faq-list">{content.faqs.map((faq, index) => (
               <div className="website-editor-faq" data-faq-row key={`faq-${index}`}>
                 <label>Question<input name="faq-question" maxLength={200} defaultValue={faq.question} /></label>
                 <label>Answer<textarea name="faq-answer" maxLength={1000} rows={2} defaultValue={faq.answer} /></label>
                 <button type="button" className="website-editor-icon-action" aria-label="Remove question" onClick={() => removeFaq(index)}><X size={16} /></button>
               </div>
             ))}</div> : <p className="website-editor-muted">No questions added.</p>}
+          </section>
+
+          <section className="website-editor-section">
+            <header><div><h2>Gallery</h2><p>Upload or link images to showcase on the public website gallery page. Images must use HTTPS URLs.</p></div><button type="button" className="website-editor-small-action" onClick={addGalleryImage} disabled={galleryCount >= maxGalleryImages}>{galleryCount >= maxGalleryImages ? "Limit reached (15)" : <><Image size={15} /> Add image</>}</button></header>
+            {content.gallery?.length ? <div className="website-editor-gallery-list">{content.gallery.map((image, index) => (
+              <div className="website-editor-gallery" data-gallery-row key={image.id}>
+                <label>Image title<input name="gallery-title" maxLength={200} defaultValue={image.title} /></label>
+                <label>Description<textarea name="gallery-description" maxLength={1000} rows={2} defaultValue={image.description} /></label>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <label style={{ flex: 1 }}>Image URL<input name="gallery-url" type="url" maxLength={1000} defaultValue={image.url} placeholder="https://…" pattern="https?://.+\.(jpg|jpeg|png|webp|gif|svg)(\?.*)?$" title="Image URL must end with .jpg, .jpeg, .png, .webp, .gif, or .svg" /></label>
+                  <label style={{ flex: '0 0 auto' }}>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+                      onChange={(event) => { const f = event.target?.files?.[0]; if (f) uploadGalleryImageForRow(index, f); }}
+                      disabled={galleryUploading === image.id || galleryUploading === ("new-" + index)}
+                    />
+                  </label>
+                </div>
+                {galleryUploading === image.id || galleryUploading === `new-${index}` ? <span style={{ fontSize: 11, color: '#276b52' }}>Uploading…</span> : null}
+                {galleryUploadError && galleryUploadError.includes(image.id) ? <span style={{ fontSize: 11, color: '#974432' }}>{galleryUploadError}</span> : null}
+                <input name="gallery-id" type="hidden" defaultValue={image.id} />
+                <button type="button" className="website-editor-icon-action" aria-label="Remove image" onClick={() => removeGalleryImage(index)}><X size={16} /></button>
+              </div>
+            ))}</div> : <p className="website-editor-muted">No gallery images added.</p>}
+          </section>
+
+          <section className="website-editor-section">
+            <header><div><h2>About</h2><p>Organization profile shown on the About page.</p></div></header>
+            <div className="website-editor-fields">
+              <label>About title<input name="aboutTitle" maxLength={200} defaultValue={content.about?.title ?? ""} /></label>
+              <label>About description<textarea name="aboutDescription" maxLength={5000} rows={4} defaultValue={content.about?.description ?? ""} /></label>
+              <label className="wide">About image URL<input name="aboutImageUrl" type="url" maxLength={1000} defaultValue={content.about?.imageUrl ?? ""} placeholder="https://…" /></label>
+            </div>
+          </section>
+
+          <section className="website-editor-section">
+            <header><div><h2>Terms of Service</h2><p>Optional. If left blank, the website uses the platform terms page.</p></div></header>
+            <div className="website-editor-fields">
+              <label className="wide">Terms of Service<textarea name="terms" maxLength={10000} rows={6} defaultValue={content.terms} placeholder="Your organization's terms of service…" /></label>
+            </div>
+          </section>
+
+          <section className="website-editor-section">
+            <header><div><h2>Privacy Policy</h2><p>Optional. If left blank, the website uses the platform privacy policy page.</p></div></header>
+            <div className="website-editor-fields">
+              <label className="wide">Privacy Policy<textarea name="policy" maxLength={10000} rows={6} defaultValue={content.policy} placeholder="Your organization's privacy policy…" /></label>
+            </div>
           </section>
 
           <footer className="website-editor-form-footer">

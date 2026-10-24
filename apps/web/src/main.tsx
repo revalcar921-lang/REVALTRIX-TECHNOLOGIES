@@ -28,7 +28,7 @@ import { StaffDashboardPage } from './features/staff/pages/StaffDashboardPage.js
 import { DepartmentWorkspacePage } from './features/staff/pages/DepartmentWorkspacePage.js';
 import { StaffPasswordResetPage } from './features/staff/pages/StaffPasswordResetPage.js';
 import { getMyStaffProfile } from './features/staff/api/staff.api.js';
-import { TenantPublicWebsitePage } from './features/tenant-websites/pages/TenantPublicWebsitePage.js';
+import { TenantPublicWebsitePage, type PublicSection } from './features/tenant-websites/pages/TenantPublicWebsitePage.js';
 import { LegalInfoPage } from './features/legal/LegalInfoPage.js';
 import './styles.css';
 
@@ -47,7 +47,7 @@ type Route =
   | { name: 'staff-dashboard' }
   | { name: 'staff-password-reset' }
   | { name: 'staff-department'; departmentId?: string }
-  | { name: 'public-website'; slug: string; preview: boolean }
+  | { name: 'public-website'; slug: string; preview: boolean; section?: PublicSection }
   | { name: 'legal-info'; document: 'terms' | 'privacy' }
   | { name: 'login' }
   | { name: 'management-login' }
@@ -56,12 +56,13 @@ type Route =
 function getRoute(): Route {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
 
-  const websitePath = path.match(/^\/sites\/([a-z0-9]+(?:-[a-z0-9]+)*)$/);
+  const websitePath = path.match(/^\/sites\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\/(home|services|locations|team|gallery|about|terms|policy|faqs|contact|booking))?$/);
   if (websitePath) {
     return {
       name: 'public-website',
       slug: websitePath[1]!,
       preview: new URLSearchParams(window.location.search).get('preview') === '1',
+      section: (websitePath[2] ?? 'home') as PublicSection,
     };
   }
 
@@ -384,7 +385,7 @@ function App() {
   }
 
   if (route.name === 'public-website') {
-    return <TenantPublicWebsitePage slug={route.slug} preview={route.preview} onNavigate={navigate} />;
+    return <TenantPublicWebsitePage slug={route.slug} preview={route.preview} activeSection={route.section} onNavigate={navigate} />;
   }
 
   if (route.name === 'legal-info') {
