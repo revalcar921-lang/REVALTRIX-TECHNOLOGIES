@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  ConflictException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -713,5 +715,159 @@ export class VerificationService {
       registrationStatus: staffProfile ? 'VERIFICATION_REQUIRED' : 'ONBOARDING',
       ...(staffProfile ? { adminApprovalRequired: true } : {}),
     };
+  }
+
+  async createManagementLoginVerification(userId: string) {
+    const identity = await this.database.client.identity.findFirst({
+      where: {
+        userId,
+        type: 'EMAIL',
+        status: 'ACTIVE',
+      },
+      select: {
+        value: true,
+        normalizedValue: true,
+        verifiedAt: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!identity) {
+      throw new ForbiddenException(
+        'No active email address found for this account',
+      );
+    }
+
+    const target = this.normalizeEmail(identity.normalizedValue);
+
+    const activeChallenge = await this.database.client.verificationChallenge.findFirst({
+      where: {
+        userId,
+        channel: 'EMAIL',
+        purpose: 'MANAGEMENT_LOGIN',
+        verifiedAt: null,
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true, expiresAt: true },
+    });
+    if (activeChallenge) {
+      throw new ConflictException(
+        'A security code is already active. Use it or wait for it to expire.',
+      );
+    }
+
+    const code = this.generateCode();
+    const codeHash = this.hashCode(code);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    const challenge = await this.database.client.verificationChallenge.create({
+      data: {
+        userId,
+        channel: 'EMAIL',
+        purpose: 'MANAGEMENT_LOGIN',
+        target,
+        codeHash,
+        expiresAt,
+        attempts: 0,
+        maxAttempts: 5,
+      },
+      select: {
+        id: true,
+        channel: true,
+        target: true,
+        expiresAt: true,
+      },
+    });
+
+    try {
+      await this.verificationEmailService.sendFamilyAccessStepUp(
+        target,
+        code,
+        expiresAt,
+      );
+    } catch {
+      await this.database.client.verificationChallenge.update({
+        where: { id: challenge.id },
+        data: { consumedAt: new Date() },
+      });
+      throw new ServiceUnavailableException(
+        'Security code email could not be delivered. Please try again later.',
+      );
+    }
+
+    return {
+      challengeId: challenge.id,
+      channel: challenge.channel,
+      target: challenge.target,
+      expiresAt: challenge.expiresAt,
+      deliveryStatus: 'SENT',
+    };
+  }
+
+  async verifyManagementLoginCode(
+    userId: string,
+    challengeId: string,
+    code: string,
+  ) {
+    const challenge = await this.database.client.verificationChallenge.findFirst({
+      where: {
+        id: challengeId,
+        userId,
+        channel: 'EMAIL',
+        purpose: 'MANAGEMENT_LOGIN',
+      },
+    });
+
+    if (!challenge) {
+      throw new BadRequestException('Verification challenge not found');
+    }
+
+    if (challenge.verifiedAt || challenge.consumedAt) {
+      throw new BadRequestException(
+        'Verification challenge has already been used',
+      );
+    }
+
+    if (challenge.expiresAt <= new Date()) {
+      throw new BadRequestException('Verification code has expired');
+    }
+
+    if (challenge.attempts >= challenge.maxAttempts) {
+      throw new HttpException(
+        'Maximum verification attempts exceeded',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const normalizedCode = code.trim();
+
+    if (!/^\d{6}$/.test(normalizedCode)) {
+      throw new BadRequestException('Verification code must contain 6 digits');
+    }
+
+    const codeHash = this.hashCode(normalizedCode);
+
+    if (codeHash !== challenge.codeHash) {
+      await this.database.client.verificationChallenge.update({
+        where: { id: challenge.id },
+        data: {
+          attempts: {
+            increment: 1,
+          },
+        },
+      });
+      throw new BadRequestException('Invalid verification code');
+    }
+
+    const now = new Date();
+    await this.database.client.verificationChallenge.update({
+      where: { id: challenge.id },
+      data: {
+        verifiedAt: now,
+        consumedAt: now,
+      },
+    });
+
+    return { verified: true, challengeId: challenge.id };
   }
 }

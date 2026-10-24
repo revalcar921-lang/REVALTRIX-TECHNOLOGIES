@@ -4,6 +4,7 @@ export interface AuthSession {
   sessionId: string;
   expiresAt: string;
   userId: string;
+  stepUpVerified?: boolean;
 }
 
 const AUTH_SESSION_KEY = 'revaltrix_auth_session';

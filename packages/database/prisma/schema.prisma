@@ -3718,6 +3718,7 @@ enum VerificationPurpose {
   REGISTRATION
   PASSWORD_RESET
   FAMILY_ACCESS
+  MANAGEMENT_LOGIN
 }
 
 model VerificationChallenge {

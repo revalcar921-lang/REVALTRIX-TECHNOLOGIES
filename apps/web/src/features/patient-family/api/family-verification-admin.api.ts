@@ -40,14 +40,12 @@ export function getPendingDependentVerifications(search = '') {
 export function reviewDependentVerification(
   registrationId: string,
   payload: { decision: 'APPROVE' | 'REJECT'; rejectionReason?: string },
-  stepUpChallengeId: string,
 ) {
   return authenticatedApiRequest(
     `/v1/patient-family/admin/dependents/${encodeURIComponent(registrationId)}/review`,
     {
       method: 'POST',
       body: JSON.stringify(payload),
-      headers: { 'x-step-up-challenge-id': stepUpChallengeId },
     },
   );
 }
@@ -55,14 +53,12 @@ export function reviewDependentVerification(
 export function flagDependentVerification(
   registrationId: string,
   reason: string,
-  stepUpChallengeId: string,
 ) {
   return authenticatedApiRequest(
     `/v1/patient-family/admin/dependents/${encodeURIComponent(registrationId)}/flag`,
     {
       method: 'POST',
       body: JSON.stringify({ reason }),
-      headers: { 'x-step-up-challenge-id': stepUpChallengeId },
     },
   );
 }
@@ -70,7 +66,6 @@ export function flagDependentVerification(
 export async function downloadDependentVerificationDocument(
   registrationId: string,
   documentId: string,
-  stepUpChallengeId: string,
 ) {
   const session = getAuthSession();
   if (!session) throw new Error('Authentication required.');
@@ -80,7 +75,6 @@ export async function downloadDependentVerificationDocument(
     {
       headers: {
         Authorization: `Bearer ${session.accessToken}`,
-        'x-step-up-challenge-id': stepUpChallengeId,
       },
     },
   );

@@ -11,3 +11,6 @@ pnpm --dir packages/database exec prisma db push && pnpm --dir packages/database
 pnpm install && pnpm --dir packages/database exec prisma generate && pnpm --dir apps/api build && pnpm --dir apps/web build
 
 DHA recovery key = 2GRZ-FDTP-RJPL-KVHC
+
+kill terminal == fuser -k 5001/tcp
+restart == PID=$(lsof -ti tcp:5001); [ -z "$PID" ] || kill $PID

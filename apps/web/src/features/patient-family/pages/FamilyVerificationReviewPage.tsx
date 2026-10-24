@@ -1,5 +1,4 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { requestStepUpChallengeId } from '../../../lib/step-up.js';
 import {
   downloadDependentVerificationDocument,
   flagDependentVerification,
@@ -61,11 +60,9 @@ export function FamilyVerificationReviewPage({
     setBusyId(registration.id);
     setError(null);
     try {
-      const challengeId = await requestStepUpChallengeId();
       await downloadDependentVerificationDocument(
         registration.id,
         documentId,
-        challengeId,
       );
     } catch (downloadError) {
       setError(
@@ -101,14 +98,12 @@ export function FamilyVerificationReviewPage({
     setError(null);
     setMessage(null);
     try {
-      const challengeId = await requestStepUpChallengeId();
       await reviewDependentVerification(
         registration.id,
         {
           decision,
           ...(rejectionReason ? { rejectionReason } : {}),
         },
-        challengeId,
       );
       setMessage(
         decision === 'APPROVE'
@@ -135,8 +130,7 @@ export function FamilyVerificationReviewPage({
     setBusyId(registration.id);
     setError(null);
     try {
-      const challengeId = await requestStepUpChallengeId();
-      await flagDependentVerification(registration.id, reason, challengeId);
+      await flagDependentVerification(registration.id, reason);
       setMessage('Registration flagged for additional review.');
       await loadRegistrations();
     } catch (flagError) {

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Download, RefreshCw } from 'lucide-react';
-import { requestStepUpChallengeId } from '../../../lib/step-up.js';
 import { downloadOwnershipEvidence, getPendingOwnershipParties, reviewOwnershipParty, type PendingOwnershipParty } from '../api/tenant-ownership-review.api.js';
 
 function label(value: string): string {
@@ -32,8 +31,7 @@ export function TenantOwnershipReviewPage({ onLogout }: { onLogout: () => void }
     setBusyId(party.id);
     setError(null);
     try {
-      const challengeId = await requestStepUpChallengeId();
-      await downloadOwnershipEvidence(party.id, evidenceId, challengeId);
+      await downloadOwnershipEvidence(party.id, evidenceId);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to access evidence.');
     } finally {
@@ -49,8 +47,7 @@ export function TenantOwnershipReviewPage({ onLogout }: { onLogout: () => void }
     setError(null);
     setNotice(null);
     try {
-      const challengeId = await requestStepUpChallengeId();
-      await reviewOwnershipParty(party.id, decision, reason, challengeId);
+      await reviewOwnershipParty(party.id, decision, reason);
       setNotice(`${party.fullName} marked ${decision.toLowerCase()}.`);
       await load();
     } catch (requestError) {

@@ -116,7 +116,7 @@ export class TenantSetupService {
   }
 
   async listPendingTenantDocuments() {
-    return this.database.client.tenantDocument.findMany({
+    const documents = await this.database.client.tenantDocument.findMany({
       where: {
         verificationStatus: TenantDocumentVerificationStatus.PENDING,
         status: { in: [TenantDocumentStatus.UPLOADED, TenantDocumentStatus.UNDER_REVIEW] },
@@ -142,6 +142,10 @@ export class TenantSetupService {
       },
       orderBy: { createdAt: 'asc' },
     });
+    return documents.map((document) => ({
+      ...document,
+      fileSizeBytes: document.fileSizeBytes ? Number(document.fileSizeBytes) : null,
+    }));
   }
 
   async downloadTenantReviewDocument(reviewerUserId: string, documentId: string) {

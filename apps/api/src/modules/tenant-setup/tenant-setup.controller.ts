@@ -7,8 +7,6 @@ import { PermissionGuard } from '../authorization/guards/permission.guard.js';
 import { RequirePermission } from '../authorization/decorators/require-permission.decorator.js';
 import { PlatformPermissionGuard } from '../authorization/guards/platform-permission.guard.js';
 import { RequirePlatformPermission } from '../authorization/decorators/require-platform-permission.decorator.js';
-import { FamilyStepUpGuard } from '../patient-family/family-step-up.guard.js';
-import { RequireFamilyStepUp } from '../patient-family/require-family-step-up.decorator.js';
 import { TenantSetupService } from './tenant-setup.service.js';
 import { TenantOwnershipService } from './tenant-ownership.service.js';
 import {
@@ -18,6 +16,8 @@ import {
   UpdateOrganizationPaymentConfigDto,
   UploadTenantDocumentDto,
   ReviewOwnershipPartyDto,
+  ReviewTenantDocumentDto,
+  ReviewTenantActivationDto,
   SaveOwnershipPartyDto,
   SubmitOwnershipDeclarationDto,
   UploadOwnershipEvidenceDto,
@@ -151,9 +151,8 @@ export class TenantSetupController {
   }
 
   @Get('admin/ownership/:partyId/evidence/:evidenceId')
-  @UseGuards(PlatformPermissionGuard, FamilyStepUpGuard)
+  @UseGuards(PlatformPermissionGuard)
   @RequirePlatformPermission('tenant_ownership', 'review')
-  @RequireFamilyStepUp()
   async downloadOwnershipEvidence(
     @Req() request: AuthenticatedRequest,
     @Param('partyId', new ParseUUIDPipe()) partyId: string,
@@ -171,15 +170,68 @@ export class TenantSetupController {
   }
 
   @Post('admin/ownership/:partyId/review')
-  @UseGuards(PlatformPermissionGuard, FamilyStepUpGuard)
+  @UseGuards(PlatformPermissionGuard)
   @RequirePlatformPermission('tenant_ownership', 'review')
-  @RequireFamilyStepUp()
   reviewOwnershipParty(
     @Req() request: AuthenticatedRequest,
     @Param('partyId', new ParseUUIDPipe()) partyId: string,
     @Body() dto: ReviewOwnershipPartyDto,
   ) {
     return this.tenantOwnershipService.reviewParty(request.auth.userId, partyId, dto);
+  }
+
+  @Get('admin/activations')
+  @UseGuards(PlatformPermissionGuard)
+  @RequirePlatformPermission('super_admin', 'review_approvals')
+  listPendingActivations() {
+    return this.tenantSetupService.listPendingActivations();
+  }
+
+  @Post('admin/activation/:tenantId/review')
+  @UseGuards(PlatformPermissionGuard)
+  @RequirePlatformPermission('super_admin', 'review_approvals')
+  reviewActivation(
+    @Req() request: AuthenticatedRequest,
+    @Param('tenantId', new ParseUUIDPipe()) tenantId: string,
+    @Body() dto: ReviewTenantActivationDto,
+  ) {
+    return this.tenantSetupService.reviewActivation(request.auth.userId, tenantId, dto);
+  }
+
+  @Get('admin/documents')
+  @UseGuards(PlatformPermissionGuard)
+  @RequirePlatformPermission('super_admin', 'review_approvals')
+  listPendingTenantDocuments() {
+    return this.tenantSetupService.listPendingTenantDocuments();
+  }
+
+  @Post('admin/documents/:documentId/review')
+  @UseGuards(PlatformPermissionGuard)
+  @RequirePlatformPermission('super_admin', 'review_approvals')
+  reviewTenantDocument(
+    @Req() request: AuthenticatedRequest,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+    @Body() dto: ReviewTenantDocumentDto,
+  ) {
+    return this.tenantSetupService.reviewTenantDocument(request.auth.userId, documentId, dto);
+  }
+
+  @Get('admin/documents/:documentId/download')
+  @UseGuards(PlatformPermissionGuard)
+  @RequirePlatformPermission('super_admin', 'review_approvals')
+  async downloadTenantDocument(
+    @Req() request: AuthenticatedRequest,
+    @Param('documentId', new ParseUUIDPipe()) documentId: string,
+    @Res() response: Response,
+  ) {
+    const file = await this.tenantSetupService.downloadTenantReviewDocument(request.auth.userId, documentId);
+    response.set({
+      'Content-Type': file.contentType,
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    response.send(file.buffer);
   }
 
   @Post('terms/accept')

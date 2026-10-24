@@ -4,7 +4,7 @@ import * as argon2 from 'argon2';
 const prisma = new PrismaClient();
 
 async function main() {
-  const email = 'sp@revaltrixtechnologies.com';
+  const email = 'revaltrixtechnologies@gmail.com';
   const password = '38895790@Adminrevaltrix';
   const displayName = 'wilson Nyaanga';
   const normalizedEmail = email.toLowerCase();

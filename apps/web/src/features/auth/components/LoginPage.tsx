@@ -54,6 +54,18 @@ export function LoginPage({
         return;
       }
 
+      if (account.accountType === 'TENANT') {
+        window.history.pushState(
+          {},
+          '',
+          '/tenant/dashboard',
+        );
+        window.dispatchEvent(
+          new PopStateEvent('popstate'),
+        );
+        return;
+      }
+
       onSuccess();
     } catch (err) {
       setError(

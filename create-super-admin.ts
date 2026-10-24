@@ -4,7 +4,7 @@ import * as argon2 from 'argon2';
 const prisma = new PrismaClient();
 
 async function main() {
-  const email = 'sp@revaltrixtechnologies.com';
+  const email = 'revaltrixtechnologies@gmail.com';
   const password = '38895790@Adminrevaltrix';
   const displayName = 'wilson Nyaanga';
   const normalizedEmail = email.toLowerCase();
@@ -82,12 +82,12 @@ async function main() {
     console.log('  Platform role already exists: PLATFORM_ADMIN');
   }
 
-  let permission = await prisma.permission.findFirst({
+  const accessPermission = await prisma.permission.findFirst({
     where: { scope: PermissionScope.PLATFORM, resource: 'management_portal', action: 'access' },
   });
 
-  if (!permission) {
-    permission = await prisma.permission.create({
+  if (!accessPermission) {
+    await prisma.permission.create({
       data: {
         resource: 'management_portal',
         action: 'access',
@@ -102,15 +102,37 @@ async function main() {
     console.log('  Permission already exists: management_portal:access');
   }
 
-  const existingRolePermission = await prisma.rolePermission.findFirst({
-    where: { roleId: platformRole.id, permissionId: permission.id },
+  const readPermission = await prisma.permission.findFirst({
+    where: { scope: PermissionScope.PLATFORM, resource: 'management_portal', action: 'read' },
   });
 
-  if (!existingRolePermission) {
-    await prisma.rolePermission.create({ data: { roleId: platformRole.id, permissionId: permission.id } });
-    console.log('  Permission assigned to role');
+  if (!readPermission) {
+    await prisma.permission.create({
+      data: {
+        resource: 'management_portal',
+        action: 'read',
+        effect: PermissionEffect.ALLOW,
+        scope: PermissionScope.PLATFORM,
+        description: 'Read access to management portal data (tenants, stats, users, audit, security)',
+        status: RecordStatus.ACTIVE,
+      },
+    });
+    console.log('  Permission created: management_portal:read');
   } else {
-    console.log('  Permission already assigned to role');
+    console.log('  Permission already exists: management_portal:read');
+  }
+
+  const existingRolePermissions = await prisma.rolePermission.findMany({
+    where: { roleId: platformRole.id },
+    select: { permissionId: true },
+  });
+  const existingPermissionIds = new Set(existingRolePermissions.map((rp) => rp.permissionId));
+
+  const permissionsToAssign = [accessPermission, readPermission].filter((p) => p && !existingPermissionIds.has(p.id));
+
+  for (const perm of permissionsToAssign) {
+    await prisma.rolePermission.create({ data: { roleId: platformRole.id, permissionId: perm.id } });
+    console.log('  Permission assigned to role:', perm.action);
   }
 
   const existingAssignment = await prisma.platformRoleAssignment.findFirst({
