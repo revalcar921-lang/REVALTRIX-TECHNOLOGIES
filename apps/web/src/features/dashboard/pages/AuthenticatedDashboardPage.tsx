@@ -29,7 +29,7 @@ import { TenantFeatureAccessPage } from './TenantFeatureAccessPage.js';
 import { TenantWebsiteEditorPage } from '../../tenant-websites/pages/TenantWebsiteEditorPage.js';
 import { TenantSetupConfigPage } from './TenantSetupConfigPage.js';
 import { ProvidersPage } from '../../providers/components/ProvidersPage.js';
-import { getSuperAdminApprovalAccess } from '../api/super-admin.api.js';
+import { getOwnershipReviewAccess } from '../api/tenant-ownership-review.api.js';
 
 interface AuthenticatedDashboardPageProps {
   requestedPath: string;
@@ -44,7 +44,7 @@ export function AuthenticatedDashboardPage({
   const [membership, setMembership] = useState<DashboardMembership | null>(null);
   const [tenantFeatures, setTenantFeatures] = useState<TenantFeatureState[]>([]);
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false);
-  const [canReviewSuperAdmin, setCanReviewSuperAdmin] = useState(false);
+  const [canReviewOwnership, setCanReviewOwnership] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,11 +61,11 @@ export function AuthenticatedDashboardPage({
           }
         }
 
-        const [result, featureStates, canManageFeatures, superAdminReviewAccess] = await Promise.all([
+        const [result, featureStates, canManageFeatures, ownershipReviewAccess] = await Promise.all([
           getDashboard(),
           getTenantFeatures(),
           getTenantFeatureManagementAccess(),
-          getSuperAdminApprovalAccess(),
+          getOwnershipReviewAccess(),
         ]);
 
         if (cancelled) {
@@ -75,7 +75,7 @@ export function AuthenticatedDashboardPage({
         setDashboard(result);
         setTenantFeatures(featureStates);
         setIsPlatformAdmin(canManageFeatures);
-        setCanReviewSuperAdmin(superAdminReviewAccess);
+        setCanReviewOwnership(ownershipReviewAccess);
 
         if (!result.membership || !result.tenant) {
           setError(
@@ -194,7 +194,7 @@ export function AuthenticatedDashboardPage({
     );
 
     if (
-      !isDashboardPathAvailable(tenantType, requestedPath, enabledFeatures, isPlatformAdmin, canReviewSuperAdmin) &&
+      !isDashboardPathAvailable(tenantType, requestedPath, enabledFeatures, isPlatformAdmin, canReviewOwnership) &&
       !legacyDashboardRoute
     ) {
       return (
@@ -314,7 +314,7 @@ export function AuthenticatedDashboardPage({
         )
       }
       isPlatformAdmin={isPlatformAdmin}
-      canReviewSuperAdmin={canReviewSuperAdmin}
+      canReviewOwnership={canReviewOwnership}
       onNavigate={onNavigate}
       onLogout={handleLogout}
     >

@@ -34,6 +34,7 @@ import { PatientJourneysModule } from './modules/patient-journeys/patient-journe
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
 import { StaffModule } from './modules/staff/staff.module.js';
 import { TenantWebsitesModule } from './modules/tenant-websites/tenant-websites.module.js';
+import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module.js';
 const envFilePath = [
   resolve(process.cwd(), 'apps/.env'),
   resolve(process.cwd(), '.env'),
@@ -83,6 +84,7 @@ const envFilePath = [
     DepartmentsModule,
     StaffModule,
     TenantWebsitesModule,
+    PlatformAdminModule,
   ],
 })
 export class AppModule {}

@@ -2,6 +2,8 @@ import { authenticatedApiRequest } from '../../../lib/auth-api.js';
 import { apiRequest } from '../../../lib/api.js';
 import type {
   Appointment,
+  CreateRecurringAppointmentInput,
+  CreateRecurringAppointmentResult,
   AppointmentStatus,
   CreateAppointmentInput,
   CreatePatientAppointmentInput,
@@ -160,5 +162,17 @@ export async function reviewAppointmentRefund(
   return authenticatedApiRequest(
     `/v1/appointments/${encodeURIComponent(appointmentId)}/refunds/${encodeURIComponent(refundId)}/review`,
     { method: 'POST', body: JSON.stringify(input) },
+  );
+}
+
+export async function createRecurringAppointment(
+  input: CreateRecurringAppointmentInput,
+): Promise<CreateRecurringAppointmentResult> {
+  return authenticatedApiRequest<CreateRecurringAppointmentResult>(
+    '/v1/appointments/recurring',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
   );
 }

@@ -257,8 +257,9 @@ export class TenantSetupService {
       await tx.tenantSetup.update({
         where: { id: setup.id },
         data: {
-          status: approved ? TenantSetupStatus.LIVE : TenantSetupStatus.READY,
+          status: approved ? TenantSetupStatus.LIVE : TenantSetupStatus.IN_PROGRESS,
           liveAt: approved ? now : null,
+          readyAt: approved ? now : null,
           activationRequestedAt: null,
           activationReviewedAt: now,
           activationReviewedByUserId: reviewerUserId,
@@ -288,7 +289,7 @@ export class TenantSetupService {
       `tenant-activation:${tenantId}:${dto.decision}:${now.toISOString()}`,
       { tenantId, decision: dto.decision },
     );
-    return { tenantId, status: approved ? TenantSetupStatus.LIVE : TenantSetupStatus.READY, decision: dto.decision };
+    return { tenantId, status: approved ? TenantSetupStatus.LIVE : TenantSetupStatus.IN_PROGRESS, decision: dto.decision };
   }
 
   private async notifyTenantAdmins(tenantId: string, type: string, title: string, body: string, eventKey: string, data: Record<string, unknown>) {
@@ -303,36 +304,6 @@ export class TenantSetupService {
     await Promise.all([...new Set(admins.map(({ userId }) => userId))].map((recipientUserId) =>
       this.notifications.createNotification({
         tenantId,
-        recipientUserId,
-        type,
-        title,
-        body,
-        data,
-        channels: [NotificationChannel.IN_APP, NotificationChannel.EMAIL],
-        idempotencyPrefix: eventKey,
-      }),
-    ));
-  }
-
-  private async notifyPlatformReviewers(type: string, title: string, body: string, eventKey: string, data: Record<string, unknown>) {
-    const reviewers = await this.database.client.user.findMany({
-      where: {
-        status: 'ACTIVE',
-        deletedAt: null,
-        platformRoleAssignments: {
-          some: {
-            role: {
-              scope: 'PLATFORM',
-              status: 'ACTIVE',
-              code: { in: ['PLATFORM_ADMIN', 'PLATFORM_VERIFIER', 'VERIFICATION_REVIEWER'] },
-            },
-          },
-        },
-      },
-      select: { id: true },
-    });
-    await Promise.all([...new Set(reviewers.map(({ id }) => id))].map((recipientUserId) =>
-      this.notifications.createNotification({
         recipientUserId,
         type,
         title,
@@ -787,18 +758,6 @@ export class TenantSetupService {
       });
     }
 
-    const pendingActivation = await this.database.client.tenantSetup.findUnique({
-      where: { tenantId: readiness.tenant.id },
-      select: { activationRequestedAt: true, activationReviewedAt: true },
-    });
-    if (pendingActivation?.activationRequestedAt && !pendingActivation.activationReviewedAt) {
-      return {
-        accepted: true,
-        status: TenantSetupStatus.READY,
-        message: 'An activation request is already pending platform review.',
-      };
-    }
-
     const membership = await this.database.client.membership.findFirst({
       where: {
         userId,
@@ -820,7 +779,6 @@ export class TenantSetupService {
       throw new ForbiddenException('Only an active tenant administrator can request activation');
     }
 
-    const activationRequestedAt = new Date();
     await this.database.client.$transaction(async (tx) => {
       await tx.auditEvent.create({
         data: {
@@ -844,23 +802,11 @@ export class TenantSetupService {
         where: { tenantId: membership.tenantId },
         data: {
           status: TenantSetupStatus.READY,
-          readyAt: activationRequestedAt,
-          activationRequestedAt,
-          activationReviewedAt: null,
-          activationReviewedByUserId: null,
-          activationReviewReason: null,
-          lastCalculatedAt: activationRequestedAt,
+          readyAt: new Date(),
+          lastCalculatedAt: new Date(),
         },
       });
     });
-
-    await this.notifyPlatformReviewers(
-      'TENANT_ACTIVATION_REQUESTED',
-      'Facility activation request',
-      `${readiness.tenant.name} is ready for activation review.`,
-      `tenant-activation-request:${membership.tenantId}:${activationRequestedAt.toISOString()}`,
-      { tenantId: membership.tenantId },
-    );
 
     return {
       accepted: true,

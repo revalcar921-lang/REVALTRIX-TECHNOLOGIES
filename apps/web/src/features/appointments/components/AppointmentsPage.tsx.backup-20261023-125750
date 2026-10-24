@@ -1,0 +1,430 @@
+import { FormEvent, useEffect, useState } from 'react';
+import './AppointmentsPage.css';
+import {
+  createAppointment,
+  getAppointments,
+  reviewAppointmentRefund,
+  transitionAppointment,
+} from '../api/appointments.api.js';
+import type {
+  Appointment,
+  AppointmentStatus,
+} from '../types/appointment.types.js';
+import { getPatients } from '../../patients/api/patients.api.js';
+import type { PatientListItem } from '../../patients/types/patient.types.js';
+import { getDepartments } from '../../departments/api/departments.api.js';
+import type { Department } from '../../departments/types/department.types.js';
+import { getServices } from '../../services/api/services.api.js';
+import type { Service } from '../../services/types/service.types.js';
+
+function localDateTimeValue(date: Date): string {
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function displayDate(value: string, timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone,
+    }).format(new Date(value));
+  } catch {
+    return new Date(value).toLocaleString();
+  }
+}
+
+const actions: Partial<
+  Record<AppointmentStatus, { label: string; status: AppointmentStatus }[]>
+> = {
+  REQUESTED: [
+    { label: 'Confirm', status: 'CONFIRMED' },
+    { label: 'Reject', status: 'REJECTED' },
+    { label: 'Cancel', status: 'CANCELLED' },
+  ],
+  PENDING_APPROVAL: [
+    { label: 'Confirm', status: 'CONFIRMED' },
+    { label: 'Reject', status: 'REJECTED' },
+    { label: 'Cancel', status: 'CANCELLED' },
+  ],
+  CONFIRMED: [
+    { label: 'Check in', status: 'CHECKED_IN' },
+    { label: 'Mark no-show', status: 'NO_SHOW' },
+    { label: 'Cancel', status: 'CANCELLED' },
+  ],
+  CHECKED_IN: [
+    { label: 'Start', status: 'IN_PROGRESS' },
+    { label: 'Cancel', status: 'CANCELLED' },
+  ],
+  IN_PROGRESS: [{ label: 'Complete', status: 'COMPLETED' }],
+};
+
+export function AppointmentsPage({
+  onNavigate,
+}: {
+  onNavigate: (path: string) => void;
+}) {
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [patients, setPatients] = useState<PatientListItem[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [patientId, setPatientId] = useState('');
+  const [departmentId, setDepartmentId] = useState('');
+  const [serviceId, setServiceId] = useState('');
+  const [startAt, setStartAt] = useState(() =>
+    localDateTimeValue(new Date(Date.now() + 60 * 60 * 1000)),
+  );
+  const [endAt, setEndAt] = useState(() =>
+    localDateTimeValue(new Date(Date.now() + 90 * 60 * 1000)),
+  );
+  const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [actingId, setActingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  async function loadData() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [appointmentResult, patientResult, departmentResult, serviceResult] =
+        await Promise.all([
+          getAppointments(),
+          getPatients({ status: 'ACTIVE', page: 1, pageSize: 100 }),
+          getDepartments(),
+          getServices(),
+        ]);
+
+      setAppointments(appointmentResult);
+      setPatients(patientResult.data);
+      setDepartments(departmentResult);
+      setServices(serviceResult);
+
+      if (!patientId && patientResult.data.length) {
+        setPatientId(patientResult.data[0].id);
+      }
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : 'Unable to load appointments.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  async function submitAppointment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    if (!patientId) {
+      setError('Select a registered patient first.');
+      return;
+    }
+    if (!departmentId && !serviceId) {
+      setError('Select a department or a service.');
+      return;
+    }
+
+    const start = new Date(startAt);
+    const end = new Date(endAt);
+    if (
+      Number.isNaN(start.getTime()) ||
+      Number.isNaN(end.getTime()) ||
+      start <= new Date() ||
+      end <= start
+    ) {
+      setError('Choose a future start time and an end time after the start.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const created = await createAppointment({
+        patientTenantRecordId: patientId,
+        ...(departmentId ? { departmentId } : {}),
+        ...(serviceId ? { serviceId } : {}),
+        startAt: start.toISOString(),
+        endAt: end.toISOString(),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+        ...(reason.trim() ? { reason: reason.trim() } : {}),
+      });
+
+      setAppointments((current) =>
+        [...current, created].sort(
+          (a, b) => Date.parse(a.startAt) - Date.parse(b.startAt),
+        ),
+      );
+      setReason('');
+      setSuccess(`Appointment ${created.appointmentNumber} created.`);
+      await loadData();
+    } catch (createError) {
+      setError(
+        createError instanceof Error
+          ? createError.message
+          : 'Unable to create appointment.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function runAction(
+    appointment: Appointment,
+    status: AppointmentStatus,
+  ) {
+    let reasonText: string | undefined;
+    if (status === 'CANCELLED' || status === 'REJECTED' || status === 'NO_SHOW') {
+      const entered = window.prompt(
+        status === 'CANCELLED'
+          ? 'Reason for cancellation:'
+          : status === 'NO_SHOW'
+            ? 'Reason for suspected no-show (the patient can dispute this):'
+            : 'Reason for rejection:',
+      );
+      if (entered === null) return;
+      if (entered.trim().length < 3) {
+        setError('Please enter a reason of at least 3 characters.');
+        return;
+      }
+      reasonText = entered.trim();
+    }
+
+    setActingId(appointment.id);
+    setError(null);
+    setSuccess(null);
+    try {
+      await transitionAppointment(appointment.id, status, reasonText);
+      setSuccess(
+        `Appointment ${appointment.appointmentNumber} updated to ${status.replaceAll('_', ' ').toLowerCase()}.`,
+      );
+      await loadData();
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : 'Unable to update appointment.',
+      );
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  async function reviewRefund(appointment: Appointment, refundId: string, status: 'PENDING' | 'REFUNDED' | 'FAILED' | 'DISPUTED' | 'NOT_ELIGIBLE') {
+    const reason = window.prompt(`Reason for marking refund ${status.toLowerCase().replaceAll('_', ' ')}:`);
+    if (!reason?.trim() || reason.trim().length < 3) {
+      setError('A refund review reason of at least 3 characters is required.');
+      return;
+    }
+    const evidenceRef = status === 'REFUNDED' ? window.prompt('Evidence reference for the completed refund (required):')?.trim() : undefined;
+    const methodInput = status === 'REFUNDED' ? window.prompt('Refund method: CASH, MPESA, BANK_TRANSFER, or OTHER')?.trim().toUpperCase() : undefined;
+    const refundMethod = ['CASH', 'MPESA', 'BANK_TRANSFER', 'OTHER'].includes(methodInput ?? '') ? methodInput as 'CASH' | 'MPESA' | 'BANK_TRANSFER' | 'OTHER' : undefined;
+    const providerReference = status === 'REFUNDED' && refundMethod && refundMethod !== 'CASH' ? window.prompt('Electronic refund transaction reference (required):')?.trim() : undefined;
+    if (status === 'REFUNDED' && (!evidenceRef || !refundMethod || (refundMethod !== 'CASH' && !providerReference))) {
+      setError('Refund evidence and method are required; electronic refunds need a transaction reference.');
+      return;
+    }
+    setActingId(appointment.id);
+    setError(null);
+    setSuccess(null);
+    try {
+      await reviewAppointmentRefund(appointment.id, refundId, {
+        status,
+        reason: reason.trim(),
+        ...(evidenceRef ? { evidenceRef } : {}),
+        ...(providerReference ? { providerReference } : {}),
+        ...(refundMethod ? { refundMethod } : {}),
+      });
+      setSuccess(`Refund for appointment ${appointment.appointmentNumber} updated.`);
+      await loadData();
+    } catch (reviewError) {
+      setError(reviewError instanceof Error ? reviewError.message : 'Unable to update refund.');
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  return (
+    <section className="dashboard-content appointments-page">
+      <header className="dashboard-page-header">
+        <div>
+          <h1>Appointments</h1>
+          <p>Schedule visits and manage patient appointment flow.</p>
+        </div>
+        <button type="button" onClick={() => void loadData()} disabled={loading}>
+          Refresh
+        </button>
+      </header>
+
+      {error && <p role="alert">{error}</p>}
+      {success && <p role="status">{success}</p>}
+
+      <section className="appointments-panel appointments-create-panel">
+        <div className="appointments-panel-heading">
+          <div><h2>Schedule appointment</h2><p>Choose the patient and visit details to create a booking.</p></div>
+        </div>
+        <form className="appointment-form" onSubmit={submitAppointment}>
+          <label>
+            Registered patient
+            <select
+              value={patientId}
+              onChange={(event) => setPatientId(event.target.value)}
+              required
+            >
+              <option value="">Select patient</option>
+              {patients.map((patient) => (
+                <option key={patient.id} value={patient.id}>
+                  {patient.patient.displayName} — {patient.patientNumber}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Department
+            <select
+              value={departmentId}
+              onChange={(event) => setDepartmentId(event.target.value)}
+            >
+              <option value="">No department selected</option>
+              {departments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Service
+            <select
+              value={serviceId}
+              onChange={(event) => setServiceId(event.target.value)}
+            >
+              <option value="">No service selected</option>
+              {services.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Start
+            <input
+              type="datetime-local"
+              value={startAt}
+              onChange={(event) => setStartAt(event.target.value)}
+              required
+            />
+          </label>
+
+          <label>
+            End
+            <input
+              type="datetime-local"
+              value={endAt}
+              onChange={(event) => setEndAt(event.target.value)}
+              required
+            />
+          </label>
+
+          <label>
+            Reason for visit
+            <input
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              maxLength={500}
+              placeholder="Optional"
+            />
+          </label>
+
+          <button type="submit" disabled={saving || loading || !patients.length}>
+            {saving ? 'Saving…' : 'Create appointment'}
+          </button>
+          {!loading && patients.length === 0 && (
+            <p>No active registered patients are available. Register or activate a patient first.</p>
+          )}
+        </form>
+      </section>
+
+      <section className="appointments-panel appointments-schedule-panel">
+        <div className="appointments-panel-heading">
+          <div><h2>Appointment schedule</h2><p>Review bookings, payment details, and update appointment status.</p></div>
+          <span className="appointments-count">{appointments.length} {appointments.length === 1 ? "appointment" : "appointments"}</span>
+        </div>
+        {loading ? (
+          <p>Loading appointments…</p>
+        ) : appointments.length === 0 ? (
+          <p>No appointments found for this facility.</p>
+        ) : (
+          <div className="appointments-list">
+            {appointments.map((appointment) => (
+              <article className="appointment-record" key={appointment.id}>
+                <h3>
+                  {appointment.appointmentNumber} · {appointment.status.replaceAll('_', ' ')}
+                </h3>
+                {appointment.bookingSource === 'PATIENT_PORTAL' ? <p className="appointment-online-badge">Online booking</p> : null}
+                <p>
+                  Patient number: {appointment.patientTenantRecord.patientNumber}
+                </p>
+                <p>
+                  {displayDate(appointment.startAt, appointment.timeZone)} –{' '}
+                  {displayDate(appointment.endAt, appointment.timeZone)}
+                </p>
+                <p>
+                  Department: {appointment.department?.name ?? '—'} · Service:{' '}
+                  {appointment.service?.name ?? '—'}
+                </p>
+                {appointment.paymentIntents?.[0] ? (
+                  <p className="appointment-payment-summary">
+                    Deposit: {appointment.paymentIntents[0].currency} {appointment.paymentIntents[0].amount} · {appointment.paymentIntents[0].status.replaceAll('_', ' ')}
+                    {appointment.paymentIntents[0].providerReceipt ? ` · M-Pesa receipt ${appointment.paymentIntents[0].providerReceipt}` : ''}
+                  </p>
+                ) : null}
+                {appointment.refunds?.map((refund) => (
+                  <div className="appointment-refund-summary" key={refund.id}>
+                    <p>Refund: {refund.status.replaceAll('_', ' ')} · {refund.currency} {refund.amount}{refund.refundMethod ? ` · ${refund.refundMethod.replaceAll('_', ' ')}` : ''} · {refund.reason}</p>
+                    {refund.providerReference ? <p>Provider reference: {refund.providerReference}</p> : null}
+                    {['REQUESTED', 'DISPUTED', 'ELIGIBLE', 'PENDING'].includes(refund.status) ? (
+                      <div className="appointment-refund-actions">
+                        <button type="button" disabled={actingId === appointment.id} onClick={() => void reviewRefund(appointment, refund.id, 'PENDING')}>Mark processing</button>
+                        <button type="button" disabled={actingId === appointment.id} onClick={() => void reviewRefund(appointment, refund.id, 'REFUNDED')}>Record refund</button>
+                        <button type="button" disabled={actingId === appointment.id} onClick={() => void reviewRefund(appointment, refund.id, 'DISPUTED')}>Escalate dispute</button>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {appointment.reason && <p>Reason: {appointment.reason}</p>}
+                <div>
+                  {(actions[appointment.status] ?? []).map((action) => (
+                    <button
+                      key={action.status}
+                      type="button"
+                      disabled={actingId === appointment.id}
+                      onClick={() => void runAction(appointment, action.status)}
+                    >
+                      {actingId === appointment.id ? 'Updating…' : action.label}
+                    </button>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <button className="appointments-open-encounters" type="button" onClick={() => onNavigate('/tenant/encounters')}>
+        Open encounters
+      </button>
+    </section>
+  );
+}

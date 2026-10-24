@@ -798,6 +798,7 @@ model User {
   notifications             Notification[]
   webPushSubscriptions      WebPushSubscription[]
   appointmentsCreated       Appointment[]               @relation("AppointmentCreator")
+  appointmentSeriesCreated AppointmentSeries[] @relation("AppointmentSeriesCreator")
   appointmentStatusChanges  AppointmentStatusHistory[]  @relation("AppointmentStatusChanger")
   availabilityRulesCreated  ProviderAvailability[]      @relation("ProviderAvailabilityCreator")
   availabilityBlocksCreated AvailabilityBlock[]         @relation("AvailabilityBlockCreator")
@@ -872,6 +873,7 @@ model ProviderProfile {
   encounters            Encounter[]
   clinicalNotesAuthored ClinicalNote[]         @relation("ClinicalNoteProviderAuthor")
   appointments          Appointment[]
+  appointmentSeries AppointmentSeries[]
   appointmentSlotHolds   AppointmentSlotHold[]
   availabilityRules     ProviderAvailability[]
   availabilityBlocks    AvailabilityBlock[]
@@ -1303,6 +1305,7 @@ model Tenant {
   queueCareRecords          QueueCareRecord[]
   queueCareAttachments      QueueCareAttachment[]
   appointments              Appointment[]
+  appointmentSeries         AppointmentSeries[]
   appointmentStatusHistory  AppointmentStatusHistory[]
   appointmentSlotHolds      AppointmentSlotHold[]
   appointmentPaymentIntents AppointmentPaymentIntent[]
@@ -2234,6 +2237,7 @@ model Service {
   department         Department?              @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   branch             Branch?                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
   appointments       Appointment[]
+  appointmentSeries AppointmentSeries[]
   appointmentSlotHolds AppointmentSlotHold[]
   staffAssignments   StaffServiceAssignment[]
   availabilityRules  ProviderAvailability[]
@@ -2310,6 +2314,7 @@ model Branch {
 
   patientJourneySteps PatientJourneyStep[]
   appointments        Appointment[]
+  appointmentSeries AppointmentSeries[]
   appointmentSlotHolds AppointmentSlotHold[]
   availabilityRules   ProviderAvailability[]
   availabilityBlocks  AvailabilityBlock[]
@@ -2373,6 +2378,7 @@ model Department {
   handoffsTo                 PatientJourneyHandoff[]     @relation("HandoffToDepartment")
   queueCareRecords           QueueCareRecord[]
   appointments               Appointment[]
+  appointmentSeries AppointmentSeries[]
   availabilityRules          ProviderAvailability[]
   availabilityBlocks         AvailabilityBlock[]
   staffProfiles              StaffProfile[]
@@ -3383,6 +3389,7 @@ model PatientTenantRecord {
   appointments    Appointment[]
   appointmentSlotHolds AppointmentSlotHold[]
   appointmentPaymentIntents AppointmentPaymentIntent[]
+  appointmentSeries AppointmentSeries[]
 
   @@unique([tenantId, patientProfileId])
   @@unique([tenantId, patientNumber])
@@ -3804,6 +3811,13 @@ model NotificationDelivery {
   @@map("notification_deliveries")
 }
 
+enum AppointmentSeriesStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  COMPLETED
+}
+
 enum AppointmentStatus {
   REQUESTED
   PENDING_APPROVAL
@@ -4007,6 +4021,7 @@ model Appointment {
   cancelledAt           DateTime?                @db.Timestamptz(6)
   checkedInAt           DateTime?                @db.Timestamptz(6)
   slotHoldId            String?                  @unique @db.Uuid
+  seriesId              String?                  @db.Uuid
   createdByUserId       String                   @db.Uuid
   createdAt             DateTime                 @default(now()) @db.Timestamptz(6)
   updatedAt             DateTime                 @updatedAt @db.Timestamptz(6)
@@ -4022,9 +4037,11 @@ model Appointment {
   encounter           Encounter?
   slotHold            AppointmentSlotHold?        @relation(fields: [slotHoldId], references: [id], onDelete: Restrict)
   paymentIntents      AppointmentPaymentIntent[]
+  series              AppointmentSeries?        @relation(fields: [tenantId, seriesId], references: [tenantId, id], onDelete: Restrict)
   refunds             AppointmentRefund[]
 
   @@unique([tenantId, appointmentNumber])
+  @@unique([tenantId, seriesId, startAt])
   @@index([tenantId, status, startAt])
   @@index([tenantId, providerId, startAt, endAt])
   @@index([tenantId, patientTenantRecordId, startAt])
@@ -4277,4 +4294,44 @@ model StockMovement {
   @@index([purchaseReceiptItemId])
   @@index([purchaseReturnItemId])
   @@map("stock_movements")
+}
+
+
+model AppointmentSeries {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @db.Uuid
+  patientTenantRecordId String   @db.Uuid
+  providerId            String?  @db.Uuid
+  branchId              String?  @db.Uuid
+  departmentId          String?  @db.Uuid
+  serviceId             String?  @db.Uuid
+  createdByUserId       String   @db.Uuid
+  timeZone              String   @db.VarChar(100)
+  startDate             DateTime @db.Date
+  endDate               DateTime? @db.Date
+  maxOccurrences        Int?     
+  generatedThrough      DateTime? @db.Date
+  weekdays              Int[]
+  intervalWeeks         Int      @default(1)
+  startMinute           Int
+  durationMinutes       Int
+  reason                String?  @db.VarChar(1000)
+  patientNotes          String?  @db.VarChar(2000)
+  status                AppointmentSeriesStatus @default(ACTIVE)
+  createdAt             DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  patientTenantRecord PatientTenantRecord @relation(fields: [patientTenantRecordId], references: [id], onDelete: Restrict)
+  provider            ProviderProfile?   @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  branch              Branch?             @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  department          Department?          @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  service             Service?             @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  createdByUser       User                @relation("AppointmentSeriesCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  appointments        Appointment[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, status, startDate])
+  @@index([tenantId, patientTenantRecordId, status])
+  @@map("appointment_series")
 }

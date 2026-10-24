@@ -16,8 +16,6 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../../database/database.service.js';
 import { AuthorizationService } from '../authorization/authorization.service.js';
 import { PrivateObjectStorageService } from '../storage/private-object-storage.service.js';
-import { NotificationsService } from '../notifications/notifications.service.js';
-import { NotificationChannel } from '@prisma/client';
 import type { ReviewOwnershipPartyDto, SaveOwnershipPartyDto, SubmitOwnershipDeclarationDto, UploadOwnershipEvidenceDto } from './dto/tenant-setup-config.dto.js';
 
 type OwnershipFile = { originalname: string; mimetype: string; buffer: Buffer; size: number };
@@ -28,7 +26,6 @@ export class TenantOwnershipService {
     private readonly database: DatabaseService,
     private readonly authorization: AuthorizationService,
     private readonly storage: PrivateObjectStorageService,
-    private readonly notifications: NotificationsService,
   ) {}
 
   async listMine(userId: string) {
@@ -308,10 +305,6 @@ export class TenantOwnershipService {
     return this.authorization.hasPlatformPermission(userId, { resource: 'tenant_ownership', action: 'review' });
   }
 
-  async canReviewSuperAdmin(userId: string): Promise<boolean> {
-    return this.authorization.hasPlatformPermission(userId, { resource: 'super_admin', action: 'review_approvals' });
-  }
-
   async downloadReviewEvidence(reviewerUserId: string, partyId: string, evidenceId: string) {
     const evidence = await this.database.client.tenantOwnershipEvidence.findFirst({
       where: { id: evidenceId, partyId },
@@ -336,7 +329,7 @@ export class TenantOwnershipService {
     if (dto.decision === 'REJECTED' && !dto.reason?.trim()) throw new BadRequestException('A rejection reason is required.');
     const party = await this.database.client.tenantOwnershipParty.findUnique({
       where: { id: partyId },
-      select: { id: true, tenantId: true, status: true, fullName: true },
+      select: { id: true, tenantId: true, status: true },
     });
     if (!party) throw new NotFoundException('Ownership party not found');
     if (party.status !== OrganizationIdentityReviewStatus.PENDING_REVIEW) throw new ConflictException('Only pending ownership parties can be reviewed.');
@@ -387,28 +380,6 @@ export class TenantOwnershipService {
         },
       });
     });
-    const tenantAdmins = await this.database.client.membership.findMany({
-      where: {
-        tenantId: party.tenantId,
-        status: 'ACTIVE',
-        roles: { some: { role: { code: 'TENANT_ADMIN', status: 'ACTIVE' } } },
-      },
-      select: { userId: true },
-    });
-    await Promise.all([...new Set(tenantAdmins.map(({ userId }) => userId))].map((recipientUserId) =>
-      this.notifications.createNotification({
-        tenantId: party.tenantId,
-        recipientUserId,
-        type: `TENANT_OWNERSHIP_PARTY_${dto.decision}`,
-        title: dto.decision === 'VERIFIED' ? 'Ownership party verified' : 'Ownership evidence needs changes',
-        body: dto.decision === 'VERIFIED'
-          ? `${party.fullName} has been verified by the platform review team.`
-          : `${party.fullName} was rejected. Reason: ${dto.reason!.trim()}`,
-        data: { partyId, decision: dto.decision, ...(dto.reason ? { reason: dto.reason.trim() } : {}) },
-        channels: [NotificationChannel.IN_APP, NotificationChannel.EMAIL],
-        idempotencyPrefix: `ownership-review:${party.id}:${dto.decision}`,
-      }),
-    ));
     return { id: partyId, decision: dto.decision };
   }
 

@@ -1,0 +1,369 @@
+
+
+/* Appointments page: scoped layout and visual hierarchy */
+.appointments-page {
+  --appointment-ink: #0f172a;
+  --appointment-muted: #64748b;
+  --appointment-border: #e2e8f0;
+  --appointment-blue: #2563eb;
+  --appointment-surface: #ffffff;
+  width: 100%;
+  min-width: 0;
+  color: var(--appointment-ink);
+}
+
+.appointments-page .dashboard-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 26px;
+  padding: 26px 28px;
+  background: linear-gradient(135deg, #ffffff, #f4f8ff);
+  border: 1px solid var(--appointment-border);
+  border-radius: 16px;
+  box-shadow: 0 4px 16px rgb(15 23 42 / 4%);
+}
+
+.appointments-page .dashboard-page-header h1 {
+  margin: 0;
+  color: var(--appointment-ink);
+  font-size: clamp(26px, 3vw, 34px);
+  font-weight: 750;
+  letter-spacing: -0.035em;
+}
+
+.appointments-page .dashboard-page-header p {
+  margin: 8px 0 0;
+  color: var(--appointment-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.appointments-page > .appointments-panel {
+  min-width: 0;
+  margin: 0 0 24px;
+  overflow: hidden;
+  background: var(--appointment-surface);
+  border: 1px solid var(--appointment-border);
+  border-radius: 16px;
+  box-shadow: 0 3px 14px rgb(15 23 42 / 3%);
+}
+
+.appointments-page .appointments-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 21px 24px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.appointments-page .appointments-panel-heading h2 {
+  margin: 0;
+  color: var(--appointment-ink);
+  font-size: 18px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.appointments-page .appointments-panel-heading p {
+  margin: 6px 0 0;
+  color: var(--appointment-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.appointments-page .appointments-count {
+  flex-shrink: 0;
+  padding: 7px 11px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.appointments-page .appointment-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  padding: 24px;
+}
+
+.appointments-page .appointment-form > label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.appointments-page .appointment-form > label:first-child,
+.appointments-page .appointment-form > label:nth-child(2),
+.appointments-page .appointment-form > label:nth-child(3),
+.appointments-page .appointment-form > label:nth-child(6) {
+  grid-column: span 1;
+}
+
+.appointments-page .appointment-form input,
+.appointments-page .appointment-form select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  padding: 0 13px;
+  color: var(--appointment-ink);
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 1.4;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.appointments-page .appointment-form select {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.appointments-page .appointment-form input:focus,
+.appointments-page .appointment-form select:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 12%);
+}
+
+.appointments-page .appointment-form input::placeholder {
+  color: #94a3b8;
+}
+
+.appointments-page .appointment-form > button[type="submit"] {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0 20px;
+  color: #ffffff;
+  background: var(--appointment-blue);
+  border: 1px solid var(--appointment-blue);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.appointments-page .appointment-form > button[type="submit"]:hover:not(:disabled) {
+  background: #1d4ed8;
+  transform: translateY(-1px);
+}
+
+.appointments-page button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.appointments-page .appointments-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+
+.appointments-page .appointment-record {
+  min-width: 0;
+  padding: 20px;
+  overflow-wrap: anywhere;
+  background: #ffffff;
+  border: 1px solid var(--appointment-border);
+  border-radius: 13px;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.appointments-page .appointment-record:hover {
+  border-color: #bfdbfe;
+  box-shadow: 0 5px 16px rgb(15 23 42 / 5%);
+}
+
+.appointments-page .appointment-record h3 {
+  margin: 0 0 14px;
+  color: var(--appointment-ink);
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.5;
+}
+
+.appointments-page .appointment-record > p {
+  margin: 9px 0;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.appointments-page .appointment-online-badge {
+  display: inline-flex;
+  width: fit-content;
+  padding: 5px 9px;
+  color: #075985 !important;
+  background: #e0f2fe;
+  border-radius: 999px;
+  font-size: 11px !important;
+  font-weight: 750;
+}
+
+.appointments-page .appointment-payment-summary {
+  padding: 11px 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+}
+
+.appointments-page .appointment-refund-summary {
+  margin: 12px 0;
+  padding: 12px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 10px;
+}
+
+.appointments-page .appointment-refund-summary p {
+  margin: 5px 0;
+  color: #78350f;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.appointments-page .appointment-refund-actions,
+.appointments-page .appointment-record > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.appointments-page .appointment-record button,
+.appointments-page .appointment-refund-actions button {
+  min-height: 36px;
+  padding: 7px 11px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.appointments-page .appointment-record button:hover:not(:disabled) {
+  background: #dbeafe;
+  border-color: #bfdbfe;
+}
+
+.appointments-page .appointments-open-encounters {
+  min-height: 42px;
+  margin: 0 0 8px;
+  padding: 0 17px;
+  color: #ffffff;
+  background: #0f172a;
+  border: 1px solid #0f172a;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.appointments-page .appointments-open-encounters:hover {
+  background: #1e293b;
+}
+
+.appointments-page [role="alert"] {
+  padding: 13px 15px;
+  color: #991b1b;
+  background: #fff7f7;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.appointments-page [role="status"] {
+  padding: 13px 15px;
+  color: #166534;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.appointments-page > .appointments-panel > p {
+  margin: 0;
+  padding: 24px;
+  color: var(--appointment-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.appointments-page button:focus-visible {
+  outline: 3px solid rgb(59 130 246 / 35%);
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .appointments-page .appointments-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .appointments-page .dashboard-page-header {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 20px;
+  }
+
+  .appointments-page .appointment-form {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .appointments-page .appointment-form > label {
+    grid-column: 1 / -1;
+  }
+
+  .appointments-page .appointment-form > button[type="submit"] {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .appointments-page .appointments-panel-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .appointments-page .appointments-list {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .appointments-page .appointment-record {
+    padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .appointments-page *,
+  .appointments-page *::before,
+  .appointments-page *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

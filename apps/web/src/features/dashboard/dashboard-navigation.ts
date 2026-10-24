@@ -22,7 +22,7 @@ export interface DashboardNavItem {
   requiredTenantTypes?: TenantType[];
   requiredFeature?: TenantFeature;
   platformOnly?: boolean;
-  superAdminReviewerOnly?: boolean;
+  ownershipReviewerOnly?: boolean;
 }
 
 export interface DashboardNavGroup {
@@ -619,10 +619,10 @@ const NAVIGATION: DashboardNavGroup[] = [
       },
       {
         key: 'tenant-ownership-review',
-        label: 'Super Admin',
-        path: '/admin/super',
+        label: 'Tenant Ownership Review',
+        path: '/admin/tenant-ownership',
         section: 'ADMINISTRATION',
-        superAdminReviewerOnly: true,
+        ownershipReviewerOnly: true,
       },
     ],
   },
@@ -632,7 +632,7 @@ export function getDashboardNavigation(
   tenantType: TenantType,
   enabledFeatures?: ReadonlySet<TenantFeature>,
   isPlatformAdmin = false,
-  canReviewSuperAdmin = false,
+  canReviewOwnership = false,
 ): DashboardNavGroup[] {
   return NAVIGATION.map((group) => ({
     ...group,
@@ -642,7 +642,7 @@ export function getDashboardNavigation(
         (!item.requiredTenantTypes || item.requiredTenantTypes.includes(tenantType)) &&
         (!item.requiredFeature || !enabledFeatures || enabledFeatures.has(item.requiredFeature)) &&
         (!item.platformOnly || isPlatformAdmin) &&
-        (!item.superAdminReviewerOnly || canReviewSuperAdmin),
+        (!item.ownershipReviewerOnly || canReviewOwnership),
     ),
   })).filter((group) => group.items.length > 0);
 }
@@ -652,13 +652,13 @@ export function isDashboardPathAvailable(
   path: string,
   enabledFeatures?: ReadonlySet<TenantFeature>,
   isPlatformAdmin = false,
-  canReviewSuperAdmin = false,
+  canReviewOwnership = false,
 ): boolean {
   if (path === '/tenant/dashboard' || path === '/dashboard') {
     return true;
   }
 
-  return getDashboardNavigation(tenantType, enabledFeatures, isPlatformAdmin, canReviewSuperAdmin).some((group) =>
+  return getDashboardNavigation(tenantType, enabledFeatures, isPlatformAdmin, canReviewOwnership).some((group) =>
     group.items.some((item) => path === item.path || path.startsWith(`${item.path}/`)),
   );
 }

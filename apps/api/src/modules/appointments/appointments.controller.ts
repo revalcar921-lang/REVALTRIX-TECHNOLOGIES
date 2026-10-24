@@ -19,6 +19,7 @@ import { CreateAppointmentDto } from './dto/create-appointment.dto.js';
 import { AppointmentQueryDto } from './dto/appointment-query.dto.js';
 import { AppointmentSlotsQueryDto } from './dto/appointment-slots-query.dto.js';
 import { TransitionAppointmentDto } from './dto/transition-appointment.dto.js';
+import { CreateRecurringAppointmentDto } from './dto/create-recurring-appointment.dto.js';
 import { RequestAppointmentRefundDto, ReviewAppointmentRefundDto } from './dto/appointment-refund.dto.js';
 import { AppointmentsService } from './appointments.service.js';
 
@@ -58,6 +59,18 @@ export class AppointmentsController {
     @Query('tenantId') tenantId: string,
   ) {
     return this.appointmentsService.getPatientBookingEligibility(request.auth.userId, tenantId);
+  }
+    @Post('recurring')
+  @UseGuards(PermissionGuard)
+  @RequirePermission('appointments', 'create')
+  createRecurring(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: CreateRecurringAppointmentDto,
+  ) {
+    return this.appointmentsService.createRecurringForStaff(
+      request.auth.userId,
+      dto,
+    );
   }
 
   @Post('my/:appointmentId/refund-request')

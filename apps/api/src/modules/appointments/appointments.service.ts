@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../../database/database.service.js';
 import { AuthorizationService } from '../authorization/authorization.service.js';
 import { CreateAppointmentDto } from './dto/create-appointment.dto.js';
+import { CreateRecurringAppointmentDto } from './dto/create-recurring-appointment.dto.js';
 import { CreatePatientAppointmentDto } from './dto/create-patient-appointment.dto.js';
 import { AppointmentQueryDto } from './dto/appointment-query.dto.js';
 import { AppointmentSlotsQueryDto } from './dto/appointment-slots-query.dto.js';
@@ -1031,6 +1032,468 @@ export class AppointmentsService {
           });
 
           return appointment;
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          timeout: 30000,
+          maxWait: 15000,
+        },
+      );
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2034') {
+          throw new ConflictException(
+            'Appointment availability changed concurrently. Refresh and try again.',
+          );
+        }
+        if (error.code === 'P2002') {
+          throw new ConflictException(
+            'Appointment number collision. Please retry the request.',
+          );
+        }
+      }
+      throw error;
+    }
+  }
+
+  async createRecurringForStaff(
+    userId: string,
+    dto: CreateRecurringAppointmentDto,
+  ) {
+    const context = await this.authorization.getContext(userId);
+    const timeZone = dto.timeZone.trim();
+    const intervalWeeks = dto.intervalWeeks ?? 1;
+    const maxOccurrences = dto.maxOccurrences;
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+    const parseLocalDate = (value: string, field: string): Date => {
+      if (!datePattern.test(value)) {
+        throw new BadRequestException(`${field} must use YYYY-MM-DD format`);
+      }
+      const parsed = new Date(`${value}T00:00:00.000Z`);
+      if (
+        !Number.isFinite(parsed.getTime()) ||
+        parsed.toISOString().slice(0, 10) !== value
+      ) {
+        throw new BadRequestException(`${field} must be a real calendar date`);
+      }
+      return parsed;
+    };
+
+    const startDate = parseLocalDate(dto.startDate, 'startDate');
+    const endDate = dto.endDate
+      ? parseLocalDate(dto.endDate, 'endDate')
+      : null;
+
+    if (!endDate && !maxOccurrences) {
+      throw new BadRequestException(
+        'Provide endDate or maxOccurrences to bound the recurring schedule',
+      );
+    }
+    if (endDate && endDate < startDate) {
+      throw new BadRequestException('endDate cannot be before startDate');
+    }
+    if (!Number.isInteger(intervalWeeks) || intervalWeeks < 1 || intervalWeeks > 52) {
+      throw new BadRequestException('intervalWeeks must be between 1 and 52');
+    }
+    if (
+      maxOccurrences !== undefined &&
+      (!Number.isInteger(maxOccurrences) || maxOccurrences < 1 || maxOccurrences > 52)
+    ) {
+      throw new BadRequestException('maxOccurrences must be between 1 and 52');
+    }
+    if (!Array.isArray(dto.weekdays) || dto.weekdays.length === 0 ||
+      new Set(dto.weekdays).size !== dto.weekdays.length ||
+      dto.weekdays.some((day) => !Number.isInteger(day) || day < 0 || day > 6)
+    ) {
+      throw new BadRequestException('weekdays must contain unique day numbers from 0 (Sunday) to 6 (Saturday)');
+    }
+    if (dto.startMinute < 0 || dto.startMinute > 1439 ||
+      !Number.isInteger(dto.startMinute)) {
+      throw new BadRequestException('startMinute must be between 0 and 1439');
+    }
+    if (!Number.isInteger(dto.durationMinutes) ||
+      dto.durationMinutes < 5 || dto.durationMinutes > 720) {
+      throw new BadRequestException('durationMinutes must be between 5 and 720');
+    }
+
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone }).format(startDate);
+    } catch {
+      throw new BadRequestException('A valid IANA time zone is required');
+    }
+
+    const localDateKey = (date: Date) =>
+      `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+
+    const instantForLocalMinute = (
+      dateKey: string,
+      minute: number,
+    ): Date | null => {
+      const dateParts = dateKey.split('-').map(Number);
+      const year = dateParts[0];
+      const month = dateParts[1];
+      const day = dateParts[2];
+      if (year === undefined || month === undefined || day === undefined) {
+        return null;
+      }
+      const desired = Date.UTC(
+        year, month - 1, day, Math.floor(minute / 60), minute % 60,
+      );
+      let guess = desired;
+
+      for (let i = 0; i < 6; i++) {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hourCycle: 'h23',
+        }).formatToParts(new Date(guess));
+        const get = (type: string) =>
+          parts.find((part) => part.type === type)?.value ?? '0';
+        const actual = Date.UTC(
+          Number(get('year')),
+          Number(get('month')) - 1,
+          Number(get('day')),
+          Number(get('hour')),
+          Number(get('minute')),
+        );
+        const correction = desired - actual;
+        guess += correction;
+        if (correction === 0) break;
+      }
+
+      const result = new Date(guess);
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(result);
+      const get = (type: string) =>
+        parts.find((part) => part.type === type)?.value ?? '';
+      const actualKey = `${get('year')}-${get('month')}-${get('day')}`;
+      const actualMinute = Number(get('hour')) * 60 + Number(get('minute'));
+
+      return actualKey === dateKey && actualMinute === minute ? result : null;
+    };
+
+    const todayInZone = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
+    const occurrences: Array<{ startAt: Date; endAt: Date; localDate: string }> = [];
+    const firstDay = startDate.getUTCDay();
+    const firstWeekSunday = new Date(startDate);
+    firstWeekSunday.setUTCDate(startDate.getUTCDate() - firstDay);
+
+    for (
+      let cursor = new Date(startDate);
+      !endDate || cursor <= endDate;
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
+    ) {
+      const weekNumber = Math.floor(
+        (cursor.getTime() - firstWeekSunday.getTime()) / (7 * 86400000),
+      );
+      if (
+        cursor < startDate ||
+        weekNumber % intervalWeeks !== 0 ||
+        !dto.weekdays.includes(cursor.getUTCDay())
+      ) {
+        continue;
+      }
+
+      const localDate = localDateKey(cursor);
+      if (localDate < todayInZone) {
+        continue;
+      }
+
+      const startAt = instantForLocalMinute(localDate, dto.startMinute);
+      if (!startAt || startAt <= new Date()) {
+        throw new BadRequestException(
+          `The requested local appointment time is invalid or not in the future on ${localDate}`,
+        );
+      }
+      const endAt = new Date(startAt.getTime() + dto.durationMinutes * 60000);
+      const endDateInZone = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(endAt);
+      if (endDateInZone !== localDate) {
+        throw new BadRequestException(
+          `Appointments must fit within one local calendar day (${localDate})`,
+        );
+      }
+
+      occurrences.push({ startAt, endAt, localDate });
+      if (maxOccurrences && occurrences.length >= maxOccurrences) break;
+      if (occurrences.length > 52) {
+        throw new BadRequestException(
+          'A recurring series cannot contain more than 52 appointments',
+        );
+      }
+    }
+
+    if (occurrences.length === 0) {
+      throw new BadRequestException(
+        'The recurrence rules did not produce any future appointments',
+      );
+    }
+    if (endDate && !maxOccurrences) {
+      const lastOccurrence = occurrences[occurrences.length - 1];
+      if (!lastOccurrence) {
+        throw new BadRequestException('No valid recurrence dates were generated');
+      }
+      const lastGenerated = lastOccurrence.localDate;
+      const hasMoreMatchingDates = (() => {
+        const probe = new Date(`${lastGenerated}T00:00:00.000Z`);
+        probe.setUTCDate(probe.getUTCDate() + 1);
+        for (let cursor = probe; cursor <= endDate; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+          const weekNumber = Math.floor(
+            (cursor.getTime() - firstWeekSunday.getTime()) / (7 * 86400000),
+          );
+          if (weekNumber % intervalWeeks === 0 && dto.weekdays.includes(cursor.getUTCDay())) {
+            return true;
+          }
+        }
+        return false;
+      })();
+      if (hasMoreMatchingDates) {
+        throw new BadRequestException(
+          'This schedule exceeds the 52-appointment limit; provide an earlier endDate or maxOccurrences',
+        );
+      }
+    }
+
+    if (!dto.providerId && !dto.serviceId && !dto.departmentId) {
+      throw new BadRequestException(
+        'Select at least a provider, service, or department',
+      );
+    }
+
+    const branchId = dto.branchId ?? context.branchId ?? null;
+    const departmentId = dto.departmentId ?? context.departmentId ?? null;
+    const first = occurrences[0];
+    if (!first) {
+      throw new BadRequestException('No valid recurrence dates were generated');
+    }
+    const firstAppointmentDto: CreateAppointmentDto = {
+      patientTenantRecordId: dto.patientTenantRecordId,
+      ...(dto.providerId ? { providerId: dto.providerId } : {}),
+      ...(branchId ? { branchId } : {}),
+      ...(departmentId ? { departmentId } : {}),
+      ...(dto.serviceId ? { serviceId: dto.serviceId } : {}),
+      startAt: first.startAt.toISOString(),
+      endAt: first.endAt.toISOString(),
+      timeZone,
+      ...(dto.reason !== undefined ? { reason: dto.reason } : {}),
+      ...(dto.patientNotes !== undefined ? { patientNotes: dto.patientNotes } : {}),
+    };
+
+    await this.validateResources(
+      context.tenantId, firstAppointmentDto, branchId, departmentId,
+    );
+
+    const reason = dto.reason?.trim() || null;
+    const patientNotes = dto.patientNotes?.trim() || null;
+
+    try {
+      return await this.database.client.$transaction(
+        async (tx) => {
+          const patient = await tx.patientTenantRecord.findFirst({
+            where: {
+              id: dto.patientTenantRecordId,
+              tenantId: context.tenantId,
+              status: 'ACTIVE',
+              deletedAt: null,
+            },
+            select: {
+              id: true,
+              patientProfile: { select: { userId: true } },
+            },
+          });
+          if (!patient) {
+            throw new BadRequestException(
+              'Patient must be an active patient of this facility',
+            );
+          }
+
+          const tenant = await tx.tenant.findUniqueOrThrow({
+            where: { id: context.tenantId },
+            select: { name: true },
+          });
+
+          const appointmentDtos = occurrences.map((occurrence): CreateAppointmentDto => ({
+            ...firstAppointmentDto,
+            startAt: occurrence.startAt.toISOString(),
+            endAt: occurrence.endAt.toISOString(),
+          }));
+
+          for (const occurrence of occurrences) {
+            if (dto.providerId) {
+              await this.validateProviderAvailability(
+                tx,
+                context.tenantId,
+                {
+                  ...firstAppointmentDto,
+                  startAt: occurrence.startAt.toISOString(),
+                  endAt: occurrence.endAt.toISOString(),
+                },
+                branchId,
+                departmentId,
+                occurrence.startAt,
+                occurrence.endAt,
+                timeZone,
+              );
+
+              const heldSlot = await tx.appointmentSlotHold.findFirst({
+                where: {
+                  tenantId: context.tenantId,
+                  providerId: dto.providerId,
+                  status: 'ACTIVE',
+                  expiresAt: { gt: new Date() },
+                  startAt: { lt: occurrence.endAt },
+                  endAt: { gt: occurrence.startAt },
+                },
+                select: { id: true },
+              });
+              if (heldSlot) {
+                throw new ConflictException(
+                  `One of the requested times is temporarily reserved (${occurrence.localDate})`,
+                );
+              }
+            }
+
+            const conflict = await tx.appointment.findFirst({
+              where: {
+                tenantId: context.tenantId,
+                status: { notIn: TERMINAL_STATUSES },
+                startAt: { lt: occurrence.endAt },
+                endAt: { gt: occurrence.startAt },
+                OR: [
+                  { patientTenantRecordId: patient.id },
+                  ...(dto.providerId ? [{ providerId: dto.providerId }] : []),
+                ],
+              },
+              select: { id: true, appointmentNumber: true },
+            });
+            if (conflict) {
+              throw new ConflictException(
+                `A patient or provider appointment overlaps the requested recurrence on ${occurrence.localDate}`,
+              );
+            }
+          }
+
+          const series = await tx.appointmentSeries.create({
+            data: {
+              tenantId: context.tenantId,
+              patientTenantRecordId: patient.id,
+              providerId: dto.providerId ?? null,
+              branchId,
+              departmentId,
+              serviceId: dto.serviceId ?? null,
+              createdByUserId: userId,
+              timeZone,
+              startDate,
+              endDate,
+              maxOccurrences: maxOccurrences ?? null,
+              generatedThrough: new Date(`${occurrences[occurrences.length - 1]!.localDate}T00:00:00.000Z`),
+              weekdays: [...dto.weekdays].sort((a, b) => a - b),
+              intervalWeeks,
+              startMinute: dto.startMinute,
+              durationMinutes: dto.durationMinutes,
+              reason,
+              patientNotes,
+            },
+          });
+
+          const appointments = [];
+          for (const occurrence of occurrences) {
+            const appointmentNumber =
+              `APT-${new Date().getUTCFullYear()}-${randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+
+            const appointment = await tx.appointment.create({
+              data: {
+                tenantId: context.tenantId,
+                patientTenantRecordId: patient.id,
+                providerId: dto.providerId ?? null,
+                branchId,
+                departmentId,
+                serviceId: dto.serviceId ?? null,
+                seriesId: series.id,
+                appointmentNumber,
+                bookingSource: AppointmentBookingSource.STAFF,
+                startAt: occurrence.startAt,
+                endAt: occurrence.endAt,
+                timeZone,
+                reason,
+                patientNotes,
+                createdByUserId: userId,
+                statusHistory: {
+                  create: {
+                    tenantId: context.tenantId,
+                    fromStatus: null,
+                    toStatus: AppointmentStatus.REQUESTED,
+                    reason: 'Recurring appointment created',
+                    changedByUserId: userId,
+                  },
+                },
+              },
+              include: {
+                statusHistory: { orderBy: { createdAt: 'asc' } },
+              },
+            });
+            appointments.push(appointment);
+
+            await tx.auditEvent.create({
+              data: {
+                tenantId: context.tenantId,
+                actorUserId: userId,
+                branchId,
+                action: 'APPOINTMENT_CREATED',
+                resourceType: 'APPOINTMENT',
+                resourceId: appointment.id,
+                outcome: 'SUCCESS',
+                reason: 'Recurring appointment created',
+                metadata: {
+                  appointmentNumber,
+                  seriesId: series.id,
+                  patientTenantRecordId: patient.id,
+                  providerId: appointment.providerId,
+                  branchId: appointment.branchId,
+                  departmentId: appointment.departmentId,
+                  serviceId: appointment.serviceId,
+                  startAt: occurrence.startAt.toISOString(),
+                  endAt: occurrence.endAt.toISOString(),
+                },
+              },
+            });
+
+            await this.notifyAppointmentParticipants(tx, {
+              tenantId: context.tenantId,
+              patientUserId: patient.patientProfile.userId,
+              appointmentId: appointment.id,
+              appointmentNumber,
+              status: AppointmentStatus.REQUESTED,
+              eventKey: `${appointment.id}:REQUESTED`,
+              branchId,
+              departmentId,
+              tenantName: tenant.name,
+            });
+          }
+
+          return { series, appointments };
         },
         {
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,

@@ -993,3 +993,100 @@
     page-break-inside: avoid;
   }
 }
+/* =================================================================
+   ADD / EDIT PRODUCT FORM & DRAWER POLISH
+   ================================================================= */
+
+.shop-product-drawer.shop-product-form {
+  background: #ffffff;
+  border-left: 1px solid #e2e8f0;
+  box-shadow: -8px 0 32px rgba(15, 23, 42, 0.15);
+  display: flex;
+  flex-direction: column;
+}
+
+.shop-product-form header {
+  padding: 1.5rem 2rem 1rem;
+  border-bottom: 1px solid #f1f5f9;
+  background: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.shop-product-form-grid {
+  padding: 1.5rem 2rem;
+  overflow-y: auto;
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem 1.5rem;
+}
+
+.shop-product-form-section {
+  grid-column: span 2;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 1.25rem;
+  margin-top: 0.5rem;
+}
+
+.shop-product-form-section:first-of-type {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.shop-product-form-section h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 0.2rem 0;
+}
+
+.shop-product-form-section p {
+  font-size: 0.8125rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.shop-product-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #334155;
+  grid-column: span 1;
+}
+
+.shop-product-form label.full-width {
+  grid-column: span 2;
+}
+
+.shop-input {
+  padding: 0.625rem 0.875rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: #0f172a;
+  background: #fff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.shop-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.shop-product-form footer {
+  padding: 1rem 2rem;
+  background: #f8fafc;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+}

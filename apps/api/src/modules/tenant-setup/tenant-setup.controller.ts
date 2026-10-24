@@ -18,8 +18,6 @@ import {
   UpdateOrganizationPaymentConfigDto,
   UploadTenantDocumentDto,
   ReviewOwnershipPartyDto,
-  ReviewTenantActivationDto,
-  ReviewTenantDocumentDto,
   SaveOwnershipPartyDto,
   SubmitOwnershipDeclarationDto,
   UploadOwnershipEvidenceDto,
@@ -150,68 +148,6 @@ export class TenantSetupController {
   @Get('admin/ownership/access')
   ownershipReviewAccess(@Req() request: AuthenticatedRequest) {
     return this.tenantOwnershipService.canReview(request.auth.userId);
-  }
-
-  @Get('admin/approvals/access')
-  async approvalsAccess(@Req() request: AuthenticatedRequest) {
-    return this.tenantOwnershipService.canReviewSuperAdmin(request.auth.userId);
-  }
-
-  @Get('admin/documents')
-  @UseGuards(PlatformPermissionGuard)
-  @RequirePlatformPermission('super_admin', 'review_approvals')
-  listPendingDocuments() {
-    return this.tenantSetupService.listPendingTenantDocuments();
-  }
-
-  @Get('admin/documents/:documentId/download')
-  @UseGuards(PlatformPermissionGuard, FamilyStepUpGuard)
-  @RequirePlatformPermission('super_admin', 'review_approvals')
-  @RequireFamilyStepUp()
-  async downloadTenantDocument(
-    @Req() request: AuthenticatedRequest,
-    @Param('documentId', new ParseUUIDPipe()) documentId: string,
-    @Res() response: Response,
-  ) {
-    const file = await this.tenantSetupService.downloadTenantReviewDocument(request.auth.userId, documentId);
-    response.set({
-      'Content-Type': file.contentType,
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
-      'Cache-Control': 'private, no-store',
-      'X-Content-Type-Options': 'nosniff',
-    });
-    response.send(file.buffer);
-  }
-
-  @Post('admin/documents/:documentId/review')
-  @UseGuards(PlatformPermissionGuard, FamilyStepUpGuard)
-  @RequirePlatformPermission('super_admin', 'review_approvals')
-  @RequireFamilyStepUp()
-  reviewTenantDocument(
-    @Req() request: AuthenticatedRequest,
-    @Param('documentId', new ParseUUIDPipe()) documentId: string,
-    @Body() dto: ReviewTenantDocumentDto,
-  ) {
-    return this.tenantSetupService.reviewTenantDocument(request.auth.userId, documentId, dto);
-  }
-
-  @Get('admin/activations')
-  @UseGuards(PlatformPermissionGuard)
-  @RequirePlatformPermission('super_admin', 'review_approvals')
-  listPendingActivations() {
-    return this.tenantSetupService.listPendingActivations();
-  }
-
-  @Post('admin/activations/:tenantId/review')
-  @UseGuards(PlatformPermissionGuard, FamilyStepUpGuard)
-  @RequirePlatformPermission('super_admin', 'review_approvals')
-  @RequireFamilyStepUp()
-  reviewActivation(
-    @Req() request: AuthenticatedRequest,
-    @Param('tenantId', new ParseUUIDPipe()) tenantId: string,
-    @Body() dto: ReviewTenantActivationDto,
-  ) {
-    return this.tenantSetupService.reviewActivation(request.auth.userId, tenantId, dto);
   }
 
   @Get('admin/ownership/:partyId/evidence/:evidenceId')

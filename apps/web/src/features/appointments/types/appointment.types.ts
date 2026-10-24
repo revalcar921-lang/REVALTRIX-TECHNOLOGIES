@@ -9,6 +9,37 @@ export type AppointmentStatus =
   | 'NO_SHOW'
   | 'REJECTED';
 
+  export interface CreateRecurringAppointmentInput {
+  patientTenantRecordId: string;
+  providerId?: string;
+  branchId?: string;
+  departmentId?: string;
+  serviceId?: string;
+  startDate: string;
+  endDate?: string;
+  maxOccurrences?: number;
+  weekdays: number[]; // Sunday = 0, Monday = 1, ..., Saturday = 6
+  intervalWeeks?: number;
+  startMinute: number; // Minutes after midnight in timeZone
+  durationMinutes: number;
+  timeZone: string;
+  reason?: string;
+  patientNotes?: string;
+}
+
+export interface CreateRecurringAppointmentResult {
+  series: {
+    id: string;
+    status: 'ACTIVE' | 'PAUSED' | 'CANCELLED' | 'COMPLETED';
+    startDate: string;
+    endDate?: string | null;
+    maxOccurrences?: number | null;
+    weekdays: number[];
+    intervalWeeks: number;
+  };
+  appointments: Appointment[];
+}
+
 export interface Appointment {
   id: string;
   appointmentNumber: string;

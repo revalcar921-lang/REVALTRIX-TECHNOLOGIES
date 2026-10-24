@@ -8,10 +8,9 @@ import { FamilyAccessGuard } from './family-access.guard.js';
 import { FamilyStepUpGuard } from './family-step-up.guard.js';
 import { PatientFamilyService } from './patient-family.service.js';
 import { FamilyAccessService } from './family-access.service.js';
-import { NotificationsModule } from '../notifications/notifications.module.js';
 
 @Module({
-  imports: [AuthenticationModule, AuthorizationModule, EmailModule, NotificationsModule],
+  imports: [AuthenticationModule, AuthorizationModule, EmailModule],
   controllers: [PatientFamilyController, FamilyAccessController],
   providers: [
     PatientFamilyService,

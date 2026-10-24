@@ -3,7 +3,12 @@ import ReactDOM from 'react-dom/client';
 import { RegistrationDashboardPage } from './features/registration/pages/RegistrationDashboardPage.js';
 import { LoginPage } from './features/auth/components/LoginPage.js';
 import { ManagementLoginPage } from './features/auth/components/ManagementLoginPage.js';
-import { verifyManagementAccess } from './features/auth/api/management-access.api.js';
+import { ManagementDashboardShell } from './features/super-admin/components/ManagementDashboardShell.js';
+import { ManagementOverviewPage } from './features/super-admin/pages/ManagementOverviewPage.js';
+import { ManagementTenantsPage } from './features/super-admin/pages/ManagementTenantsPage.js';
+import { ManagementApprovalsPage } from './features/super-admin/pages/ManagementApprovalsPage.js';
+import { ManagementPeoplePage } from './features/super-admin/pages/ManagementPeoplePage.js';
+import { ManagementAuditPage } from './features/super-admin/pages/ManagementAuditPage.js';
 import { RegistrationStartPage } from './features/registration/pages/RegistrationStartPage.js';
 import { PatientRegistrationPage } from './features/registration/pages/PatientRegistrationPage.js';
 import { TenantRegistrationPage } from './features/registration/pages/TenantRegistrationPage.js';
@@ -18,7 +23,7 @@ import { PatientDashboardPage } from './features/patient-dashboard/pages/Patient
 import { PatientProfilePage } from './features/patient-profile/pages/PatientProfilePage.js';
 import { PatientFamilyPage } from './features/patient-family/pages/PatientFamilyPage.js';
 import { FamilyVerificationReviewPage } from './features/patient-family/pages/FamilyVerificationReviewPage.js';
-import { SuperAdminPage } from './features/dashboard/pages/SuperAdminPage.js';
+import { TenantOwnershipReviewPage } from './features/dashboard/pages/TenantOwnershipReviewPage.js';
 import { StaffDashboardPage } from './features/staff/pages/StaffDashboardPage.js';
 import { DepartmentWorkspacePage } from './features/staff/pages/DepartmentWorkspacePage.js';
 import { StaffPasswordResetPage } from './features/staff/pages/StaffPasswordResetPage.js';
@@ -38,7 +43,7 @@ type Route =
   | { name: 'patient-profile' }
   | { name: 'patient-family' }
   | { name: 'family-verification-review' }
-  | { name: 'super-admin' }
+  | { name: 'tenant-ownership-review' }
   | { name: 'staff-dashboard' }
   | { name: 'staff-password-reset' }
   | { name: 'staff-department'; departmentId?: string }
@@ -46,7 +51,7 @@ type Route =
   | { name: 'legal-info'; document: 'terms' | 'privacy' }
   | { name: 'login' }
   | { name: 'management-login' }
-  | { name: 'management-home' };
+  | { name: 'management-dashboard'; path: string };
 
 function getRoute(): Route {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
@@ -59,9 +64,6 @@ function getRoute(): Route {
       preview: new URLSearchParams(window.location.search).get('preview') === '1',
     };
   }
-
-  if (path === '/management/login') return { name: 'management-login' };
-  if (path === '/management') return { name: 'management-home' };
 
   if (path === '/terms') return { name: 'legal-info', document: 'terms' };
   if (path === '/privacy') return { name: 'legal-info', document: 'privacy' };
@@ -94,8 +96,8 @@ function getRoute(): Route {
     return { name: 'family-verification-review' };
   }
 
-  if (path === '/admin/super' || path === '/admin/tenant-ownership') {
-    return { name: 'super-admin' };
+  if (path === '/admin/tenant-ownership') {
+    return { name: 'tenant-ownership-review' };
   }
 
   if (path === '/patient/dashboard' || path === '/patient' || path.startsWith('/patient/')) {
@@ -124,6 +126,17 @@ function getRoute(): Route {
 
   if (path === '/login') {
     return { name: 'login' };
+  }
+
+  if (path === '/management') {
+    return { name: 'management-login' };
+  }
+
+  if (path === '/management/dashboard' || path.startsWith('/management/')) {
+    return {
+      name: 'management-dashboard',
+      path,
+    };
   }
 
   return { name: 'start' };
@@ -215,27 +228,6 @@ function App() {
       const authSession = getAuthSession();
 
       if (authSession) {
-        if (route.name === 'management-login' || route.name === 'management-home') {
-          try {
-            await verifyManagementAccess();
-            if (cancelled) return;
-            if (route.name === 'management-login') {
-              navigate('/management');
-            } else {
-              setCheckingSession(false);
-            }
-          } catch {
-            if (cancelled) return;
-            clearAuthSession();
-            if (route.name === 'management-home') {
-              navigate('/management/login');
-            } else {
-              setCheckingSession(false);
-            }
-          }
-          return;
-        }
-
         if (route.name === 'start' || route.name === 'login') {
           try {
             const result = await getMyStaffProfile();
@@ -464,9 +456,9 @@ function App() {
     );
   }
 
-  if (route.name === 'super-admin') {
+  if (route.name === 'tenant-ownership-review') {
     return (
-      <SuperAdminPage
+      <TenantOwnershipReviewPage
         onLogout={() => {
           clearAuthSession();
           navigate('/login');
@@ -505,40 +497,64 @@ function App() {
     );
   }
 
-  if (route.name === 'management-home') {
-    return (
-      <main className="registration-page">
-        <section className="registration-card">
-          <div className="registration-header">
-            <p className="registration-eyebrow">REVALTRIX TECHNOLOGIES</p>
-            <h1>Management portal</h1>
-            <p>
-              Your management access has been verified. Available workspaces
-              and actions must be determined by the platform permissions
-              assigned to your account.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="tenant-button"
-            onClick={() => {
-              clearAuthSession();
-              navigate('/management/login');
-            }}
-          >
-            Sign out
-          </button>
-        </section>
-      </main>
-    );
+  if (route.name === 'login') {
+    return <LoginPage onSuccess={() => void navigateAfterLogin()} />;
   }
 
   if (route.name === 'management-login') {
-    return <ManagementLoginPage onSuccess={() => navigate('/management')} />;
+    return (
+      <ManagementLoginPage
+        onSuccess={() => {
+          navigate('/management/dashboard');
+        }}
+      />
+    );
   }
 
-  if (route.name === 'login') {
-    return <LoginPage onSuccess={() => void navigateAfterLogin()} />;
+  if (route.name === 'management-dashboard') {
+    const view = route.path === '/management/dashboard' ? 'overview' : route.path.replace('/management/', '');
+    const validViews = ['overview', 'tenants', 'approvals', 'people', 'audit'];
+    const currentView = validViews.includes(view) ? view : 'overview';
+
+    const pageContent = (
+      <ManagementDashboardShell
+        currentView={currentView}
+        onNavigate={(path) => navigate(path)}
+        onLogout={() => {
+          clearAuthSession();
+          navigate('/login');
+        }}
+      >
+        {currentView === 'overview' ? (
+          <ManagementOverviewPage onLogout={() => {
+            clearAuthSession();
+            navigate('/login');
+          }} />
+        ) : currentView === 'tenants' ? (
+          <ManagementTenantsPage onLogout={() => {
+            clearAuthSession();
+            navigate('/login');
+          }} />
+        ) : currentView === 'approvals' ? (
+          <ManagementApprovalsPage onLogout={() => {
+            clearAuthSession();
+            navigate('/login');
+          }} />
+        ) : currentView === 'people' ? (
+          <ManagementPeoplePage onLogout={() => {
+            clearAuthSession();
+            navigate('/login');
+          }} />
+        ) : currentView === 'audit' ? (
+          <ManagementAuditPage onLogout={() => {
+            clearAuthSession();
+            navigate('/login');
+          }} />
+        ) : null}
+      </ManagementDashboardShell>
+    );
+
+    return pageContent;
   }
 
   return (
